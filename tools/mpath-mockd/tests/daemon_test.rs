@@ -1,0 +1,350 @@
+//! Tests for mpath-mockd daemon
+
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+const DAEMON_PATH: &str = "../../target/release/mpath-mockd";
+const TEST_DATA_DIR: &str = "../../test-data/multipathd";
+
+/// Starts the mock daemon with a unique socket for each test
+fn start_test_daemon(test_name: &str) -> (Child, String) {
+    let socket_name = format!("@/tmp/test-mpath-mockd-{}-{}", test_name, std::process::id());
+    let daemon = Command::new(DAEMON_PATH)
+        .arg("--socket")
+        .arg(&socket_name)
+        .arg("--test-data-dir")
+        .arg(TEST_DATA_DIR)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start test daemon");
+    
+    (daemon, socket_name)
+}
+
+/// Waits for the daemon to start by testing connectivity
+fn wait_for_daemon(daemon: &mut Child, socket_path: &str, timeout: Duration) -> Result<(), String> {
+    let start = Instant::now();
+    
+    while start.elapsed() < timeout {
+        if daemon.try_wait().map_or(false, |o| o.is_some()) {
+            return Err("Daemon exited".to_string());
+        }
+        
+        // Try to connect using mpath-query
+        let result = Command::new("../../target/release/mpath-query")
+            .arg("--socket")
+            .arg(socket_path)
+            .arg("-c")
+            .arg("show maps json")
+            .arg("-o")
+            .arg("/dev/null")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        
+        if let Ok(status) = result {
+            if status.success() {
+                return Ok(());
+            }
+        }
+        
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    
+    Err("Timeout waiting for daemon".to_string())
+}
+
+#[test]
+fn test_daemon_starts() {
+    let (mut daemon, socket_path) = start_test_daemon("test_daemon_starts");
+    
+    assert!(wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_ok(), "Daemon should start");
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+}
+
+#[test]
+fn test_daemon_responds_to_command() {
+    let (mut daemon, socket_path) = start_test_daemon("test_daemon_responds");
+    
+    if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
+        daemon.kill().ok();
+        panic!("Daemon did not start in time");
+    }
+    
+    // Use mpath-query to test the daemon
+    let result = Command::new("../../target/release/mpath-query")
+        .arg("--socket")
+        .arg(&socket_path)
+        .arg("-c")
+        .arg("show maps json")
+        .output();
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+    
+    match result {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(stdout.contains("major_version"), "Response should contain major_version");
+            assert!(stdout.contains("maps"), "Response should contain maps");
+        }
+        Ok(output) => panic!("Query failed: {}", String::from_utf8_lossy(&output.stderr)),
+        Err(e) => panic!("Failed to run query: {}", e),
+    }
+}
+
+#[test]
+fn test_daemon_handles_unknown_command() {
+    let (mut daemon, socket_path) = start_test_daemon("test_daemon_unknown");
+    
+    if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
+        daemon.kill().ok();
+        panic!("Daemon did not start in time");
+    }
+    
+    // Use mpath-query to test with unknown command
+    let result = Command::new("../../target/release/mpath-query")
+        .arg("--socket")
+        .arg(&socket_path)
+        .arg("-c")
+        .arg("unknown command")
+        .output();
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+    
+    match result {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Should return some response (possibly error or default)
+            assert!(!stdout.is_empty(), "Response should not be empty");
+        }
+        Ok(output) => panic!("Query failed: {}", String::from_utf8_lossy(&output.stderr)),
+        Err(e) => panic!("Failed to run query: {}", e),
+    }
+}
+
+#[test]
+fn test_daemon_handles_multiple_commands() {
+    let (mut daemon, socket_path) = start_test_daemon("test_daemon_multi");
+    
+    if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
+        daemon.kill().ok();
+        panic!("Daemon did not start in time");
+    }
+    
+    // Test multiple commands
+    let commands = ["show maps json", "show status", "list maps"];
+    for cmd in commands.iter() {
+        let result = Command::new("../../target/release/mpath-query")
+            .arg("--socket")
+            .arg(&socket_path)
+            .arg("-c")
+            .arg(cmd)
+            .arg("-o")
+            .arg("/dev/null")
+            .status();
+        
+        assert!(result.is_ok(), "Failed to run query for command: {}", cmd);
+        assert!(result.unwrap().success(), "Query failed for command: {}", cmd);
+    }
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+}
+
+#[test]
+fn test_daemon_custom_socket() {
+    let custom_socket = format!("@/tmp/test-mpath-mockd-custom-{}", std::process::id());
+    let mut daemon = Command::new(DAEMON_PATH)
+        .arg("--socket")
+        .arg(&custom_socket)
+        .arg("--test-data-dir")
+        .arg(TEST_DATA_DIR)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start daemon with custom socket");
+    
+    // Wait for daemon to start
+    let start = Instant::now();
+    let mut ready = false;
+    while start.elapsed() < Duration::from_secs(2) {
+        if daemon.try_wait().map_or(false, |o| o.is_some()) {
+            panic!("Daemon exited");
+        }
+        
+        // Try to connect using mpath-query
+        let result = Command::new("../../target/release/mpath-query")
+            .arg("--socket")
+            .arg(&custom_socket)
+            .arg("-c")
+            .arg("show maps json")
+            .arg("-o")
+            .arg("/dev/null")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        
+        if let Ok(status) = result {
+            if status.success() {
+                ready = true;
+                break;
+            }
+        }
+        
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    
+    assert!(ready, "Daemon with custom socket should be ready");
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+}
+
+#[test]
+fn test_daemon_default_file_for_show_maps_json() {
+    let (mut daemon, socket_path) = start_test_daemon("test_daemon_default_file");
+    
+    if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
+        daemon.kill().ok();
+        panic!("Daemon did not start in time");
+    }
+    
+    // Query for show maps json - should return all_active_running.json by default
+    let result = Command::new("../../target/release/mpath-query")
+        .arg("--socket")
+        .arg(&socket_path)
+        .arg("-c")
+        .arg("show maps json")
+        .output();
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+    
+    match result {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // all_active_running.json has active paths, not failed ones
+            assert!(stdout.contains("\"paths\" : 16"), "Default response should have 16 paths from all_active_running.json");
+            assert!(stdout.contains("\"dm_st\" : \"active\""), "Default response should have active paths");
+        }
+        Ok(output) => panic!("Query failed: {}", String::from_utf8_lossy(&output.stderr)),
+        Err(e) => panic!("Failed to run query: {}", e),
+    }
+}
+
+#[test]
+fn test_daemon_custom_file_mapping() {
+    let custom_socket = format!("@/tmp/test-mpath-mockd-custom-map-{}", std::process::id());
+    let mut daemon = Command::new(DAEMON_PATH)
+        .arg("--socket")
+        .arg(&custom_socket)
+        .arg("--test-data-dir")
+        .arg(TEST_DATA_DIR)
+        .arg("--file-map")
+        .arg("show maps json=show_maps_json/failed_all_timeout.json")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start daemon with custom file mapping");
+    
+    // Wait for daemon to start
+    let start = Instant::now();
+    let mut ready = false;
+    while start.elapsed() < Duration::from_secs(2) {
+        if daemon.try_wait().map_or(false, |o| o.is_some()) {
+            panic!("Daemon exited");
+        }
+        
+        let result = Command::new("../../target/release/mpath-query")
+            .arg("--socket")
+            .arg(&custom_socket)
+            .arg("-c")
+            .arg("show maps json")
+            .arg("-o")
+            .arg("/dev/null")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        
+        if let Ok(status) = result {
+            if status.success() {
+                ready = true;
+                break;
+            }
+        }
+        
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    
+    assert!(ready, "Daemon with custom file mapping should be ready");
+    
+    // Query for show maps json - should return failed_all_timeout.json
+    let result = Command::new("../../target/release/mpath-query")
+        .arg("--socket")
+        .arg(&custom_socket)
+        .arg("-c")
+        .arg("show maps json")
+        .output();
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+    
+    match result {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // failed_all_timeout.json has 0 paths and all are failed/timeout
+            assert!(stdout.contains("\"paths\" : 0"), "Custom response should have 0 paths from failed_all_timeout.json");
+            assert!(stdout.contains("\"chk_st\" : \"i/o timeout\""), "Custom response should have timeout status");
+        }
+        Ok(output) => panic!("Query failed: {}", String::from_utf8_lossy(&output.stderr)),
+        Err(e) => panic!("Failed to run query: {}", e),
+    }
+}
+
+#[test]
+fn test_daemon_all_commands() {
+    let (mut daemon, socket_path) = start_test_daemon("test_daemon_all_commands");
+    
+    if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
+        daemon.kill().ok();
+        panic!("Daemon did not start in time");
+    }
+    
+    // Test all known commands
+    let test_cases = vec![
+        ("show maps json", vec!["major_version", "maps"]),
+        ("show topology", vec!["create:", "mpatha"]),
+        ("list maps", vec!["name", "sysfs", "uuid"]),
+        ("show status", vec!["paths:", "busy"]),
+        ("show config", vec!["defaults", "blacklist"]),
+    ];
+    
+    for (command, expected_contents) in test_cases {
+        let result = Command::new("../../target/release/mpath-query")
+            .arg("--socket")
+            .arg(&socket_path)
+            .arg("-c")
+            .arg(command)
+            .output();
+        
+        match result {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for expected in expected_contents {
+                    assert!(stdout.contains(expected), 
+                        "Response for '{}' should contain '{}'", command, expected);
+                }
+            }
+            Ok(output) => panic!("Query failed for '{}': {}", command, String::from_utf8_lossy(&output.stderr)),
+            Err(e) => panic!("Failed to run query for '{}': {}", command, e),
+        }
+    }
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+}

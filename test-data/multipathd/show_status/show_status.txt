@@ -1,0 +1,6 @@
+path checker states:
+unchecked           1
+up                  16
+
+paths: 16
+busy: False

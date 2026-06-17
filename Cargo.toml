@@ -1,0 +1,7 @@
+[workspace]
+members = ["libmultipath", "tools/mpath-query", "tools/mpath-mockd"]
+resolver = "2"
+
+[workspace.dependencies]
+libc = "0.2"
+clap = { version = "4.0", features = ["derive"] }
