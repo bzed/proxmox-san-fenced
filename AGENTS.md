@@ -41,7 +41,7 @@ The goal is to develope a SAN fencing daemon for proxmox, including variouys hel
   - When extracting code from a large module, move the related tests and module/type docs toward
     the new implementation so the invariants stay close to the code that owns them.
 - When running Rust commands (e.g. `just fix` or `just test`) be patient with the command and never try to kill them using the PID. Rust lock can make the execution slow, this is expected.
-
+- Avoid trailing whitespaces. Empty line should only have a linebreak and not be filled with spaces.
 
 ## Testing
 
