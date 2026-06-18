@@ -152,12 +152,17 @@ pub struct BlockDeviceInfo {
 pub struct PveSanConfig {
     /// The node name to query (local node name on Proxmox host)
     pub node: String,
+
+    /// The pvesh command to use (default: "pvesh")
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub pvesh_command: String,
 }
 
 impl Default for PveSanConfig {
     fn default() -> Self {
         Self {
             node: String::new(),
+            pvesh_command: "pvesh".to_string(),
         }
     }
 }
@@ -183,11 +188,25 @@ impl PveSanClient {
         let vms = self.list_running_vms().await?;
 
         let mut vm_infos = Vec::new();
-        for vmid in vms {
-            match self.get_vm_info(vmid).await {
-                Ok(vm_info) => vm_infos.push(vm_info),
+        for (vmid, status) in vms {
+            match self.get_vm_config(vmid).await {
+                Ok(config_map) => {
+                    let name = config_map
+                        .get("name")
+                        .cloned()
+                        .unwrap_or_else(|| format!("vm-{}", vmid));
+
+                    let disks = self.extract_disks(&config_map)?;
+
+                    vm_infos.push(VmInfo {
+                        vmid,
+                        name,
+                        status,
+                        disks,
+                    });
+                }
                 Err(e) => {
-                    eprintln!("Warning: Failed to get info for VM {}: {}", vmid, e);
+                    eprintln!("Warning: Failed to get config for VM {}: {}", vmid, e);
                     continue;
                 }
             }
@@ -202,7 +221,7 @@ impl PveSanClient {
         })
     }
 
-    async fn list_running_vms(&self) -> PveSanResult<Vec<u64>> {
+    async fn list_running_vms(&self) -> PveSanResult<Vec<(u64, String)>> {
         let node = &self.config.node;
         let path = format!("/nodes/{}/qemu", node);
 
@@ -216,47 +235,48 @@ impl PveSanClient {
             let vmid = item["vmid"]
                 .as_u64()
                 .ok_or_else(|| PveSanError::ListVmError("VMID is missing or not a number".to_string()))?;
-            let status = item["status"].as_str().unwrap_or("unknown");
+            let status = item["status"].as_str().unwrap_or("unknown").to_string();
 
             if status == "running" {
-                vms.push(vmid);
+                vms.push((vmid, status));
             }
         }
 
         Ok(vms)
     }
 
-    async fn get_vm_info(&self, vmid: u64) -> PveSanResult<VmInfo> {
+    async fn get_vm_config(&self, vmid: u64) -> PveSanResult<HashMap<String, String>> {
         let node = &self.config.node;
         let path = format!("/nodes/{}/qemu/{}/config", node, vmid);
 
         // Use pvesh get to retrieve the VM config as a string
         let config_text = self.run_pvesh_get(&path).await?;
 
-        let config_map = self.parse_vm_config(&config_text)?;
-
-        let name = config_map
-            .get("name")
-            .cloned()
-            .unwrap_or_else(|| format!("vm-{}", vmid));
-        let status = config_map
-            .get("status")
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string());
-
-        let disks = self.extract_disks(&config_map)?;
-
-        Ok(VmInfo {
-            vmid,
-            name,
-            status,
-            disks,
-        })
+        self.parse_vm_config(&config_text)
     }
 
     fn parse_vm_config(&self, config_text: &str) -> PveSanResult<HashMap<String, String>> {
         let mut config_map = HashMap::new();
-
+        
+        // Try parsing as JSON first
+        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(config_text) {
+            if let Some(obj) = json_value.as_object() {
+                for (key, value) in obj {
+                    // Convert JSON value to string
+                    let value_str = match value {
+                        serde_json::Value::String(s) => s.clone(),
+                        serde_json::Value::Number(n) => n.to_string(),
+                        serde_json::Value::Bool(b) => b.to_string(),
+                        serde_json::Value::Null => "".to_string(),
+                        _ => serde_json::to_string(value).unwrap_or_default(),
+                    };
+                    config_map.insert(key.clone(), value_str);
+                }
+                return Ok(config_map);
+            }
+        }
+        
+        // Fall back to key: value format
         for line in config_text.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
@@ -380,17 +400,17 @@ impl PveSanClient {
     /// Execute a pvesh command and return its stdout as a string
     async fn run_pvesh(&self, args: &[&str]) -> PveSanResult<String> {
         // Check if pvesh is available
-        if Command::new("pvesh").arg("--version").output().is_err() {
+        if Command::new(&self.config.pvesh_command).arg("--version").output().is_err() {
             return Err(PveSanError::PveshNotFound);
         }
 
-        let output = Command::new("pvesh")
+        let output = Command::new(&self.config.pvesh_command)
             .args(args)
             .stdin(Stdio::null())
             .stderr(Stdio::piped())
             .output()
             .map_err(|e| {
-                PveSanError::PveshError(format!("Failed to spawn pvesh: {}", e))
+                PveSanError::PveshError(format!("Failed to spawn {}: {}", self.config.pvesh_command, e))
             })?;
 
         if !output.status.success() {
@@ -436,6 +456,22 @@ pub async fn get_san_storage_info(
 ) -> PveSanResult<SanStorageInfo> {
     let config = PveSanConfig {
         node: node.to_string(),
+        pvesh_command: "pvesh".to_string(),
+    };
+
+    let client = PveSanClient::new(config)?;
+    client.get_san_storage_info().await
+}
+
+/// Get SAN storage info with a custom pvesh command (for testing)
+#[cfg_attr(not(test), allow(dead_code))]
+pub async fn get_san_storage_info_with_pvesh(
+    node: &str,
+    pvesh_command: &str,
+) -> PveSanResult<SanStorageInfo> {
+    let config = PveSanConfig {
+        node: node.to_string(),
+        pvesh_command: pvesh_command.to_string(),
     };
 
     let client = PveSanClient::new(config)?;
@@ -451,6 +487,21 @@ pub fn get_san_storage_info_sync(
         .map_err(|e| PveSanError::RuntimeError(e.to_string()))?;
     rt.block_on(async {
         get_san_storage_info(node).await
+    })
+}
+
+/// Get SAN storage info synchronously with a custom pvesh command (for testing)
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn get_san_storage_info_sync_with_pvesh(
+    node: &str,
+    pvesh_command: &str,
+) -> PveSanResult<SanStorageInfo> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| PveSanError::RuntimeError(e.to_string()))?;
+    rt.block_on(async {
+        get_san_storage_info_with_pvesh(node, pvesh_command).await
     })
 }
 
@@ -478,7 +529,7 @@ mod tests {
 
     #[test]
     fn test_parse_vm_config() {
-        let client = PveSanClient::new(PveSanConfig { node: "test".to_string() }).unwrap();
+        let client = PveSanClient::new(PveSanConfig { node: "test".to_string(), pvesh_command: "pvesh".to_string() }).unwrap();
         let config_text = "name: test-vm\nscsi0: local-lvm:vm-100-disk-0,size=10G\nstatus: running";
         let result = client.parse_vm_config(config_text);
         assert!(result.is_ok());
@@ -489,8 +540,20 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_vm_config_json() {
+        let client = PveSanClient::new(PveSanConfig { node: "test".to_string(), pvesh_command: "pvesh".to_string() }).unwrap();
+        let config_text = r#"{"name": "test-vm", "scsi0": "local-lvm:vm-100-disk-0,size=10G", "status": "running"}"#;
+        let result = client.parse_vm_config(config_text);
+        assert!(result.is_ok());
+        let config_map = result.unwrap();
+        assert_eq!(config_map.get("name"), Some(&"test-vm".to_string()));
+        assert_eq!(config_map.get("scsi0"), Some(&"local-lvm:vm-100-disk-0,size=10G".to_string()));
+        assert_eq!(config_map.get("status"), Some(&"running".to_string()));
+    }
+
+    #[test]
     fn test_parse_disk_value() {
-        let client = PveSanClient::new(PveSanConfig { node: "test".to_string() }).unwrap();
+        let client = PveSanClient::new(PveSanConfig { node: "test".to_string(), pvesh_command: "pvesh".to_string() }).unwrap();
         
         // Test with storage and size
         let (storage, metadata) = client.parse_disk_value("local-lvm:vm-100-disk-0,size=10G").unwrap();
@@ -511,7 +574,7 @@ mod tests {
 
     #[test]
     fn test_extract_disks() {
-        let client = PveSanClient::new(PveSanConfig { node: "test".to_string() }).unwrap();
+        let client = PveSanClient::new(PveSanConfig { node: "test".to_string(), pvesh_command: "pvesh".to_string() }).unwrap();
         
         let mut config_map = HashMap::new();
         config_map.insert("name".to_string(), "test-vm".to_string());

@@ -1,5 +1,5 @@
 [workspace]
-members = ["libmultipath", "libpve-san", "tools/mpath-query", "tools/mpath-mockd", "tools/pve-san-query"]
+members = ["libmultipath", "libpve-san", "tools/mpath-query", "tools/mpath-mockd", "tools/pve-san-query", "tools/pvesh-mock"]
 resolver = "2"
 
 [workspace.dependencies]
