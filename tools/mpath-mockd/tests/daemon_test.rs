@@ -207,17 +207,55 @@ fn test_daemon_custom_socket() {
 
 #[test]
 fn test_daemon_default_file_for_show_maps_json() {
-    let (mut daemon, socket_path) = start_test_daemon("test_daemon_default_file");
+    // Start daemon with explicit file-map to ensure we get all_active_running.json first
+    let custom_socket = format!("@/tmp/test-mpath-mockd-default-{}", std::process::id());
+    let mut daemon = Command::new(DAEMON_PATH)
+        .arg("--socket")
+        .arg(&custom_socket)
+        .arg("--test-data-dir")
+        .arg(TEST_DATA_DIR)
+        .arg("--file-map")
+        .arg("show maps json=show_maps_json/all_active_running.json")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start daemon");
     
-    if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
-        daemon.kill().ok();
-        panic!("Daemon did not start in time");
+    // Wait for daemon to start
+    let start = Instant::now();
+    let mut ready = false;
+    while start.elapsed() < Duration::from_secs(2) {
+        if daemon.try_wait().map_or(false, |o| o.is_some()) {
+            panic!("Daemon exited");
+        }
+        
+        let result = Command::new("../../target/release/mpath-query")
+            .arg("--socket")
+            .arg(&custom_socket)
+            .arg("-c")
+            .arg("show maps json")
+            .arg("-o")
+            .arg("/dev/null")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        
+        if let Ok(status) = result {
+            if status.success() {
+                ready = true;
+                break;
+            }
+        }
+        
+        std::thread::sleep(Duration::from_millis(100));
     }
     
-    // Query for show maps json - should return all_active_running.json by default
+    assert!(ready, "Daemon should be ready");
+    
+    // Query for show maps json - should return all_active_running.json
     let result = Command::new("../../target/release/mpath-query")
         .arg("--socket")
-        .arg(&socket_path)
+        .arg(&custom_socket)
         .arg("-c")
         .arg("show maps json")
         .output();
@@ -347,4 +385,116 @@ fn test_daemon_all_commands() {
     
     daemon.kill().ok();
     daemon.wait().ok();
+}
+
+#[test]
+fn test_daemon_cycles_through_files() {
+    // Use --file-map to specify two files that should be cycled
+    let custom_socket = format!("@/tmp/test-mpath-mockd-cycle-{}", std::process::id());
+    let mut daemon = Command::new(DAEMON_PATH)
+        .arg("--socket")
+        .arg(&custom_socket)
+        .arg("--test-data-dir")
+        .arg(TEST_DATA_DIR)
+        .arg("--file-map")
+        .arg("show maps json=show_maps_json/all_active_running.json,show_maps_json/failed_all_timeout.json")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start daemon with cycling");
+    
+    // Wait for daemon to start
+    let start = Instant::now();
+    let mut ready = false;
+    while start.elapsed() < Duration::from_secs(2) {
+        if daemon.try_wait().map_or(false, |o| o.is_some()) {
+            panic!("Daemon exited");
+        }
+        
+        let result = Command::new("../../target/release/mpath-query")
+            .arg("--socket")
+            .arg(&custom_socket)
+            .arg("-c")
+            .arg("show maps json")
+            .arg("-o")
+            .arg("/dev/null")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        
+        if let Ok(status) = result {
+            if status.success() {
+                ready = true;
+                break;
+            }
+        }
+        
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    
+    assert!(ready, "Daemon with cycling should be ready");
+    
+    // Make multiple queries and verify they cycle through the files
+    let results: Vec<String> = (0..4).map(|_| {
+        let result = Command::new("../../target/release/mpath-query")
+            .arg("--socket")
+            .arg(&custom_socket)
+            .arg("-c")
+            .arg("show maps json")
+            .output()
+            .expect("Failed to run query");
+        
+        assert!(result.status.success(), "Query should succeed");
+        String::from_utf8_lossy(&result.stdout).into_owned()
+    }).collect();
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+    
+    // Verify we got both types of responses (cycling between the two files)
+    // all_active_running.json has "paths" : 16
+    // failed_all_timeout.json has "paths" : 0
+    let active_count = results.iter().filter(|s| s.contains("\"paths\" : 16")).count();
+    let failed_count = results.iter().filter(|s| s.contains("\"paths\" : 0")).count();
+    
+    // With 4 queries and 2 files, we should get 2 of each (round-robin)
+    assert_eq!(active_count, 2, "Should get 2 active responses in 4 queries");
+    assert_eq!(failed_count, 2, "Should get 2 failed responses in 4 queries");
+}
+
+#[test]
+fn test_daemon_auto_loads_multiple_files() {
+    // Without specifying --file-map, the daemon should auto-load all files from the subdirectory
+    let (mut daemon, socket_path) = start_test_daemon("test_daemon_auto_load");
+    
+    if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
+        daemon.kill().ok();
+        panic!("Daemon did not start in time");
+    }
+    
+    // Make multiple queries to show maps json
+    let results: Vec<String> = (0..4).map(|_| {
+        let result = Command::new("../../target/release/mpath-query")
+            .arg("--socket")
+            .arg(&socket_path)
+            .arg("-c")
+            .arg("show maps json")
+            .output()
+            .expect("Failed to run query");
+        
+        assert!(result.status.success(), "Query should succeed");
+        String::from_utf8_lossy(&result.stdout).into_owned()
+    }).collect();
+    
+    daemon.kill().ok();
+    daemon.wait().ok();
+    
+    // With 2 files in show_maps_json/ (all_active_running.json and failed_all_timeout.json)
+    // we should cycle through both
+    let active_count = results.iter().filter(|s| s.contains("\"paths\" : 16")).count();
+    let failed_count = results.iter().filter(|s| s.contains("\"paths\" : 0")).count();
+    
+    // With 4 queries and 2 files, we should get 2 of each
+    assert!(active_count >= 1 && failed_count >= 1, 
+        "Should cycle through multiple files, got {} active and {} failed", active_count, failed_count);
 }

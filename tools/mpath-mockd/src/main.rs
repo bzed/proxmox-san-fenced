@@ -10,6 +10,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::io::FromRawFd;
 use std::path::PathBuf;
 use std::mem;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use libc::{socket, bind, listen, accept, AF_UNIX, SOCK_STREAM, sockaddr_un, setsockopt, SOL_SOCKET, SO_REUSEADDR, close, getpid};
@@ -40,10 +41,34 @@ struct Cli {
     #[arg(long, short)]
     verbose: bool,
 
-    /// File mappings for commands (format: command=filename, can be specified multiple times)
-    /// Example: --file-map "show maps json=failed_all_timeout.json" --file-map "show topology=show_topology.txt"
-    #[arg(long, value_name = "command=filename", action = clap::ArgAction::Append)]
+    /// File mappings for commands (format: command=filename or command=file1,file2,file3)
+    /// Can be specified multiple times. Files are cycled through in round-robin fashion.
+    /// Example: --file-map "show maps json=all_active_running.json,failed_all_timeout.json"
+    #[arg(long, value_name = "command=file[s]", action = clap::ArgAction::Append)]
     file_map: Vec<String>,
+}
+
+/// Tracks the current index for cycling through files for each command
+#[derive(Debug)]
+struct FileCounters {
+    indices: Mutex<HashMap<String, usize>>,
+}
+
+impl FileCounters {
+    fn new() -> Self {
+        FileCounters {
+            indices: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Get the next index for a command and increment it (wraps around)
+    fn next_index(&self, command: &str, max: usize) -> usize {
+        let mut indices = self.indices.lock().unwrap();
+        let current = indices.entry(command.to_string()).or_insert(0);
+        let result = *current;
+        *current = (*current + 1) % max;
+        result
+    }
 }
 
 /// Maps command names to their default subdirectories
@@ -74,18 +99,19 @@ fn main() {
     let cli = Cli::parse();
 
     // Parse custom file mappings from CLI
-    let mut custom_mappings: HashMap<String, String> = HashMap::new();
+    // Format: command=file1,file2,file3 or command=single_file
+    let mut custom_mappings: HashMap<String, Vec<String>> = HashMap::new();
     for mapping in &cli.file_map {
-        if let Some((command, filename)) = mapping.split_once('=') {
-            custom_mappings.insert(command.trim().to_string(), filename.trim().to_string());
+        if let Some((command, files)) = mapping.split_once('=') {
+            let command = command.trim().to_string();
+            let file_list: Vec<String> = files.split(',').map(|s| s.trim().to_string()).collect();
+            custom_mappings.insert(command, file_list);
         } else {
-            eprintln!("Warning: Invalid file mapping format '{}', expected command=filename", mapping);
+            eprintln!("Warning: Invalid file mapping format '{}', expected command=file[s]", mapping);
         }
     }
 
-    // Load test data files
-    let mut responses: HashMap<String, String> = HashMap::new();
-    
+    // Load test data files - now stores Vec<String> of file contents for cycling
     // List of known commands
     let known_commands = [
         "show maps json",
@@ -95,17 +121,25 @@ fn main() {
         "show config",
     ];
     
+    let mut command_responses: HashMap<String, Vec<String>> = HashMap::new();
+    
     for &command in &known_commands {
         // Check if there's a custom mapping for this command
-        if let Some(filename) = custom_mappings.get(command) {
-            let filepath = cli.test_data_dir.join(filename);
-            if let Ok(data) = fs::read_to_string(&filepath) {
-                responses.insert(command.to_string(), data);
-                if cli.verbose {
-                    eprintln!("Loaded test data for '{}' from {} (custom mapping)", command, filepath.display());
+        if let Some(file_list) = custom_mappings.get(command) {
+            let mut file_contents = Vec::new();
+            for filename in file_list {
+                let filepath = cli.test_data_dir.join(filename);
+                if let Ok(data) = fs::read_to_string(&filepath) {
+                    file_contents.push(data);
+                    if cli.verbose {
+                        eprintln!("Loaded test data for '{}' from {} (custom mapping)", command, filepath.display());
+                    }
+                } else {
+                    eprintln!("Warning: Could not load custom test data from {}", filepath.display());
                 }
-            } else {
-                eprintln!("Warning: Could not load custom test data from {}", filepath.display());
+            }
+            if !file_contents.is_empty() {
+                command_responses.insert(command.to_string(), file_contents);
             }
             continue;
         }
@@ -113,17 +147,49 @@ fn main() {
         // Use default subdirectory-based lookup
         let subdir = command_to_subdir(command);
         if !subdir.is_empty() {
-            let filepath = cli.test_data_dir.join(subdir).join(default_filename_for_command(command));
-            if let Ok(data) = fs::read_to_string(&filepath) {
-                responses.insert(command.to_string(), data);
+            // Try to load all files from the subdirectory
+            let mut file_contents = Vec::new();
+            let default_file = default_filename_for_command(command);
+            
+            // First, try the default file
+            let default_filepath = cli.test_data_dir.join(subdir).join(default_file);
+            if let Ok(data) = fs::read_to_string(&default_filepath) {
+                file_contents.push(data);
                 if cli.verbose {
-                    eprintln!("Loaded test data for '{}' from {}", command, filepath.display());
+                    eprintln!("Loaded test data for '{}' from {}", command, default_filepath.display());
                 }
+            }
+            
+            // Then try to load all other files in the subdirectory
+            if let Ok(dir_entries) = fs::read_dir(cli.test_data_dir.join(subdir)) {
+                let mut sorted_entries: Vec<_> = dir_entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().map_or(false, |ft| ft.is_file()))
+                    .collect();
+                sorted_entries.sort_by_key(|e| e.file_name());
+                
+                for entry in sorted_entries {
+                    let filename = entry.file_name().to_string_lossy().to_string();
+                    // Skip the default file since we already loaded it
+                    if filename != default_file {
+                        let filepath = cli.test_data_dir.join(subdir).join(&filename);
+                        if let Ok(data) = fs::read_to_string(&filepath) {
+                            file_contents.push(data);
+                            if cli.verbose {
+                                eprintln!("Loaded additional test data for '{}' from {}", command, filepath.display());
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if !file_contents.is_empty() {
+                command_responses.insert(command.to_string(), file_contents);
             } else {
                 // Try without subdirectory (for backwards compatibility)
-                let flat_filepath = cli.test_data_dir.join(default_filename_for_command(command));
+                let flat_filepath = cli.test_data_dir.join(default_file);
                 if let Ok(data) = fs::read_to_string(&flat_filepath) {
-                    responses.insert(command.to_string(), data);
+                    command_responses.insert(command.to_string(), vec![data]);
                     if cli.verbose {
                         eprintln!("Loaded test data for '{}' from {}", command, flat_filepath.display());
                     }
@@ -135,8 +201,10 @@ fn main() {
     }
     
     // Add a default response for unknown commands
-    responses.entry("show maps json".to_string())
-        .or_insert_with(|| r#"{"major_version": 0, "minor_version": 1, "maps": []}"#.to_string());
+    command_responses.entry("show maps json".to_string())
+        .or_insert_with(|| vec![r#"{"major_version": 0, "minor_version": 1, "maps": []}"#.to_string()]);
+    
+    let file_counters = Arc::new(FileCounters::new());
 
     // Create socket
     let sock_fd = match create_abstract_socket(&cli.socket) {
@@ -174,9 +242,10 @@ fn main() {
         }
 
         // Spawn a thread to handle the connection
-        let responses = responses.clone();
+        let command_responses = command_responses.clone();
+        let file_counters = file_counters.clone();
         thread::spawn(move || {
-            handle_connection(conn_fd, responses, cli.verbose);
+            handle_connection(conn_fd, command_responses, file_counters, cli.verbose);
         });
     }
 }
@@ -240,7 +309,12 @@ fn create_abstract_socket(socket_path: &str) -> io::Result<i32> {
 }
 
 /// Handles a single client connection
-fn handle_connection(conn_fd: i32, responses: HashMap<String, String>, verbose: bool) {
+fn handle_connection(
+    conn_fd: i32,
+    command_responses: HashMap<String, Vec<String>>,
+    file_counters: Arc<FileCounters>,
+    verbose: bool,
+) {
     // Read command length (8 bytes, little-endian)
     let mut len_bytes = [0u8; 8];
     let mut total_read = 0;
@@ -317,16 +391,33 @@ fn handle_connection(conn_fd: i32, responses: HashMap<String, String>, verbose: 
         eprintln!("Received command: '{}'", command);
     }
 
-    // Look up response
-    let response = responses.get(&command)
-        .or_else(|| responses.get("show maps json"))
-        .cloned()
-        .unwrap_or_else(|| {
+    // Look up response - now uses cycling through available files
+    let response = if let Some(file_list) = command_responses.get(&command) {
+        if file_list.len() == 1 {
+            // Single file, no cycling needed
+            file_list[0].clone()
+        } else {
+            // Multiple files, cycle through them
+            let index = file_counters.next_index(&command, file_list.len());
             if verbose {
-                eprintln!("No response for command '{}', using empty", command);
+                eprintln!("Using file index {} for command '{}'", index, command);
             }
-            r#"{"error": "unknown command"}"#.to_string()
-        });
+            file_list[index].clone()
+        }
+    } else if let Some(file_list) = command_responses.get("show maps json") {
+        // Fallback to show maps json responses
+        if file_list.len() == 1 {
+            file_list[0].clone()
+        } else {
+            let index = file_counters.next_index("show maps json", file_list.len());
+            file_list[index].clone()
+        }
+    } else {
+        if verbose {
+            eprintln!("No response for command '{}', using empty", command);
+        }
+        r#"{"error": "unknown command"}"#.to_string()
+    };
 
     // Send response length (8 bytes, little-endian)
     let resp_bytes = response.as_bytes();
