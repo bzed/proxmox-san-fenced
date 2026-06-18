@@ -5,7 +5,7 @@
 //! It can output the data to stdout or a file in JSON format.
 
 use clap::Parser;
-use libpve_san::get_san_storage_info;
+use libpve_san::get_san_storage_info_sync;
 use std::io::{self, Write};
 use std::process;
 
@@ -16,29 +16,9 @@ use std::process;
 #[command(version = "0.1.0")]
 #[command(about = "Retrieve SAN/FC storage information from Proxmox VE hosts", long_about = None)]
 struct Cli {
-    /// The Proxmox hostname to connect to
-    #[arg(long, short = 'H')]
-    hostname: String,
-
-    /// The username for authentication
-    #[arg(long, short = 'u')]
-    username: String,
-
-    /// The password for authentication
-    #[arg(long, short = 'P')]
-    password: String,
-
-    /// The realm for authentication (default: pam)
-    #[arg(long, default_value = "pam")]
-    realm: String,
-
-    /// Use HTTP instead of HTTPS
-    #[arg(long)]
-    insecure: bool,
-
-    /// Custom port (optional)
-    #[arg(long)]
-    port: Option<u16>,
+    /// The Proxmox node name to query
+    #[arg(long, short = 'n')]
+    node: String,
 
     /// The output file (default: stdout)
     #[arg(long, short = 'o')]
@@ -57,33 +37,11 @@ fn main() {
     let cli = Cli::parse();
 
     if cli.verbose {
-        eprintln!("Connecting to: {}", cli.hostname);
-        eprintln!("Username: {}", cli.username);
-        eprintln!("Realm: {}", cli.realm);
-        if cli.insecure {
-            eprintln!("Using HTTP (insecure)");
-        }
-        if let Some(port) = cli.port {
-            eprintln!("Port: {}", port);
-        }
+        eprintln!("Querying node: {}", cli.node);
     }
 
     // Retrieve SAN storage information
-    let rt = tokio::runtime::Runtime::new().map_err(|e| {
-        eprintln!("Error creating runtime: {}", e);
-        process::exit(1);
-    });
-
-    let result = match rt {
-        Ok(ref runtime) => {
-            runtime.block_on(async {
-                get_san_storage_info(&cli.hostname, &cli.username, &cli.password).await
-            })
-        }
-        Err(_) => {
-            process::exit(1);
-        }
-    };
+    let result = get_san_storage_info_sync(&cli.node);
 
     match result {
         Ok(data) => {
@@ -127,9 +85,9 @@ fn main() {
             eprintln!("Error: {}", e);
             if cli.verbose {
                 eprintln!("This error typically occurs when:");
-                eprintln!("  - The Proxmox API is not accessible");
-                eprintln!("  - Authentication credentials are incorrect");
-                eprintln!("  - The hostname is incorrect");
+                eprintln!("  - pvesh command is not available on this system");
+                eprintln!("  - The Proxmox VE API is not accessible");
+                eprintln!("  - The specified node does not exist");
                 eprintln!("  - Network connectivity issues");
             }
             process::exit(1);

@@ -4,11 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-proxmox-api = { version = "0.2.0", features = ["reqwest-client"] }
 lsblk = "0.6.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
-tokio = { version = "1.0", features = ["rt", "sync", "macros"] }
-reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1.0", features = ["rt", "sync", "macros", "process"] }
 log = "0.4"
