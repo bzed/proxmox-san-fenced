@@ -1,0 +1,108 @@
+[
+   {
+      "name": "test-vm-010",
+      "pid": 13278,
+      "status": "running",
+      "vmid": 132
+   },
+   {
+      "name": "test-vm-015",
+      "pid": 12197,
+      "status": "running",
+      "tags": "customer-test;os-debian;team-alpha",
+      "vmid": 145
+   },
+   {
+      "name": "test-vm-013",
+      "pid": 15300,
+      "status": "running",
+      "vmid": 141
+   },
+   {
+      "name": "test-vm-002",
+      "pid": 10939,
+      "status": "running",
+      "tags": "team-beta;unmanaged",
+      "vmid": 105
+   },
+   {
+      "name": "test-vm-008",
+      "status": "stopped",
+      "vmid": 130
+   },
+   {
+      "name": "test-vm-014",
+      "pid": 12621,
+      "status": "running",
+      "vmid": 144
+   },
+   {
+      "name": "test-vm-016",
+      "pid": 11435,
+      "status": "running",
+      "vmid": 147
+   },
+   {
+      "name": "test-vm-009",
+      "pid": 13294,
+      "status": "running",
+      "vmid": 131
+   },
+   {
+      "name": "test-vm-006",
+      "pid": 10180,
+      "status": "running",
+      "tags": "customer-test;os-debian;team-alpha",
+      "vmid": 122
+   },
+   {
+      "name": "test-vm-003",
+      "pid": 10617,
+      "status": "running",
+      "tags": "customer-test;os-debian;team-alpha",
+      "vmid": 114
+   },
+   {
+      "name": "test-vm-007",
+      "pid": 12697,
+      "status": "running",
+      "vmid": 126
+   },
+   {
+      "name": "test-vm-004",
+      "pid": 10603,
+      "status": "running",
+      "tags": "customer-test;os-debian;team-beta",
+      "vmid": 116
+   },
+   {
+      "balloon_min": 3221225472,
+      "name": "test-vm-001",
+      "pid": 10414,
+      "shares": 1000,
+      "status": "running",
+      "tags": "customer-test;os-rocky;team-beta",
+      "vmid": 104
+   },
+   {
+      "name": "test-vm-011",
+      "pid": 14310,
+      "status": "running",
+      "vmid": 133
+   },
+   {
+      "name": "test-vm-012",
+      "pid": 14736,
+      "status": "running",
+      "vmid": 140
+   },
+   {
+      "balloon_min": 3221225472,
+      "name": "test-vm-005",
+      "pid": 10311,
+      "shares": 1000,
+      "status": "running",
+      "tags": "customer-test;ha-enabled;os-rocky;team-gamma",
+      "vmid": 117
+   }
+]

@@ -1,0 +1,23 @@
+{
+   "agent": "1,fstrim_cloned_disks=1",
+   "bios": "seabios",
+   "boot": "order=sata0;sata1",
+   "cores": 1,
+   "cpu": "x86-64-v2-AES",
+   "digest": "0000000000000000000000000000000000000000",
+   "kvm": 1,
+   "machine": "pc-i440fx-10.1",
+   "memory": "8192",
+   "meta": "creation-qemu=10.1.2,ctime=1778506574",
+   "name": "test-vm-014",
+   "net0": "virtio=02:00:00:00:00:4f,VLAN792",
+   "net2": "virtio=02:00:00:00:00:d5,VLAN858",
+   "onboot": 1,
+   "ostype": "win10",
+   "sata0": "none,media=cdrom",
+   "sata1": "storage-pool-001:vm-144-disk-0.qcow2,size=100G",
+   "scsihw": "virtio-scsi-single",
+   "smbios1": "uuid=00000000-0000-0000-0000-000000000000",
+   "sockets": 2,
+   "vmgenid": "00000000-0000-0000-0000-000000000000"
+}

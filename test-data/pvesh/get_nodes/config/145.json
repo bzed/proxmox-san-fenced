@@ -1,0 +1,21 @@
+{
+   "agent": "1,fstrim_cloned_disks=1",
+   "bios": "ovmf",
+   "boot": "order=scsi0",
+   "cores": 1,
+   "cpu": "x86-64-v2-AES",
+   "digest": "0000000000000000000000000000000000000000",
+   "efidisk0": "storage-pool-001:vm-145-disk-0.qcow2,efitype=4m,size=528K",
+   "memory": "2048",
+   "meta": "creation-qemu=10.1.2,ctime=1778568121",
+   "name": "test-vm-015",
+   "net0": "virtio=02:00:00:00:00:c2,VLAN754",
+   "ostype": "l26",
+   "rng0": "source=/dev/urandom",
+   "scsi0": "storage-pool-001:vm-145-disk-1.qcow2,size=20G",
+   "scsihw": "virtio-scsi-pci",
+   "smbios1": "uuid=00000000-0000-0000-0000-000000000000",
+   "sockets": 2,
+   "tags": "customer-test;os-debian;team-alpha",
+   "vmgenid": "00000000-0000-0000-0000-000000000000"
+}
