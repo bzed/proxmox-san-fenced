@@ -1,0 +1,10 @@
+[package]
+name = "pve-san-query"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libpve-san = { path = "../../libpve-san" }
+clap = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
