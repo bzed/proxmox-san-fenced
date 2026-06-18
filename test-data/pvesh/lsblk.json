@@ -91,7 +91,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -100,7 +100,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -109,7 +109,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -118,7 +118,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -127,7 +127,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -136,7 +136,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -145,7 +145,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -154,7 +154,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -163,7 +163,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -172,7 +172,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -181,7 +181,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -190,7 +190,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -199,7 +199,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -208,7 +208,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -217,10 +217,91 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
+                     "ro": false,
+                     "type": "lvm",
+                     "mountpoints": []
+                  },
+                  {
+                     "name": "storage-nvme-001-vm--105--cloudinit",
+                     "maj:min": "252:100",
+                     "rm": false,
+                     "size": "4M",
+                     "ro": false,
+                     "type": "lvm",
+                     "mountpoints": []
+                  },
+                  {
+                     "name": "storage-nvme-001-vm--105--disk--1",
+                     "maj:min": "252:101",
+                     "rm": false,
+                     "size": "60G",
+                     "ro": false,
+                     "type": "lvm",
+                     "mountpoints": []
+                  },
+                  {
+                     "name": "storage-nvme-001-vm--105--disk--2",
+                     "maj:min": "252:102",
+                     "rm": false,
+                     "size": "100G",
+                     "ro": false,
+                     "type": "lvm",
+                     "mountpoints": []
+                  },
+                  {
+                     "name": "storage-nvme-001-vm--117--disk--0",
+                     "maj:min": "252:103",
+                     "rm": false,
+                     "size": "100G",
+                     "ro": false,
+                     "type": "lvm",
+                     "mountpoints": []
+                  },
+                  {
+                     "name": "storage-nvme-001-vm--117--disk--2",
+                     "maj:min": "252:104",
+                     "rm": false,
+                     "size": "4M",
+                     "ro": false,
+                     "type": "lvm",
+                     "mountpoints": []
+                  },
+                  {
+                     "name": "storage-nvme-001-vm--117--disk--3",
+                     "maj:min": "252:105",
+                     "rm": false,
+                     "size": "528K",
+                     "ro": false,
+                     "type": "lvm",
+                     "mountpoints": []
+                  },
+                  {
+                     "name": "storage-nvme-001-vm--122--disk--0",
+                     "maj:min": "252:106",
+                     "rm": false,
+                     "size": "528K",
+                     "ro": false,
+                     "type": "lvm",
+                     "mountpoints": []
+                  },
+                  {
+                     "name": "storage-nvme-001-vm--122--disk--1",
+                     "maj:min": "252:107",
+                     "rm": false,
+                     "size": "500G",
+                     "ro": false,
+                     "type": "lvm",
+                     "mountpoints": []
+                  },
+                  {
+                     "name": "storage-nvme-001-vm--141--disk--1",
+                     "maj:min": "252:108",
+                     "rm": false,
+                     "size": "1M",
                      "ro": false,
                      "type": "lvm",
                      "mountpoints": []
@@ -486,7 +567,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -517,7 +598,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -526,7 +607,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -535,7 +616,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -544,7 +625,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -553,7 +634,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -562,7 +643,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -571,7 +652,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -580,7 +661,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -589,7 +670,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -598,7 +679,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -607,7 +688,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -616,7 +697,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -625,7 +706,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -634,7 +715,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -643,7 +724,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -912,7 +993,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -943,7 +1024,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -952,7 +1033,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -961,7 +1042,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -970,7 +1051,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -979,7 +1060,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -988,7 +1069,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -997,7 +1078,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -1006,7 +1087,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -1015,7 +1096,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -1024,7 +1105,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -1033,7 +1114,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -1042,7 +1123,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -1051,7 +1132,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -1060,7 +1141,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -1069,7 +1150,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -1338,7 +1419,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -1369,7 +1450,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -1378,7 +1459,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -1387,7 +1468,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -1396,7 +1477,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -1405,7 +1486,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -1414,7 +1495,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -1423,7 +1504,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -1432,7 +1513,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -1441,7 +1522,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -1450,7 +1531,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -1459,7 +1540,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -1468,7 +1549,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -1477,7 +1558,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -1486,7 +1567,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -1495,7 +1576,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -1764,7 +1845,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -1795,7 +1876,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -1804,7 +1885,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -1813,7 +1894,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -1822,7 +1903,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -1831,7 +1912,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -1840,7 +1921,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -1849,7 +1930,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -1858,7 +1939,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -1867,7 +1948,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -1876,7 +1957,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -1885,7 +1966,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -1894,7 +1975,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -1903,7 +1984,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -1912,7 +1993,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -1921,7 +2002,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -2190,7 +2271,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -2221,7 +2302,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -2230,7 +2311,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -2239,7 +2320,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -2248,7 +2329,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -2257,7 +2338,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -2266,7 +2347,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -2275,7 +2356,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -2284,7 +2365,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -2293,7 +2374,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -2302,7 +2383,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -2311,7 +2392,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -2320,7 +2401,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -2329,7 +2410,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -2338,7 +2419,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -2347,7 +2428,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -2616,7 +2697,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -2647,7 +2728,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -2656,7 +2737,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -2665,7 +2746,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -2674,7 +2755,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -2683,7 +2764,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -2692,7 +2773,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -2701,7 +2782,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -2710,7 +2791,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -2719,7 +2800,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -2728,7 +2809,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -2737,7 +2818,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -2746,7 +2827,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -2755,7 +2836,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -2764,7 +2845,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -2773,7 +2854,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -3042,7 +3123,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -3073,7 +3154,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -3082,7 +3163,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -3091,7 +3172,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -3100,7 +3181,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -3109,7 +3190,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -3118,7 +3199,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -3127,7 +3208,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -3136,7 +3217,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -3145,7 +3226,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -3154,7 +3235,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -3163,7 +3244,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -3172,7 +3253,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -3181,7 +3262,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -3190,7 +3271,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -3199,7 +3280,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -3468,7 +3549,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -3499,7 +3580,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -3508,7 +3589,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -3517,7 +3598,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -3526,7 +3607,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -3535,7 +3616,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -3544,7 +3625,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -3553,7 +3634,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -3562,7 +3643,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -3571,7 +3652,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -3580,7 +3661,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -3589,7 +3670,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -3598,7 +3679,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -3607,7 +3688,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -3616,7 +3697,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -3625,7 +3706,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -3894,7 +3975,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -3925,7 +4006,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -3934,7 +4015,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -3943,7 +4024,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -3952,7 +4033,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -3961,7 +4042,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -3970,7 +4051,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -3979,7 +4060,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -3988,7 +4069,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -3997,7 +4078,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -4006,7 +4087,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -4015,7 +4096,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -4024,7 +4105,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -4033,7 +4114,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -4042,7 +4123,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -4051,7 +4132,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -4320,7 +4401,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -4351,7 +4432,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -4360,7 +4441,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -4369,7 +4450,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -4378,7 +4459,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -4387,7 +4468,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -4396,7 +4477,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -4405,7 +4486,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -4414,7 +4495,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -4423,7 +4504,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -4432,7 +4513,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -4441,7 +4522,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -4450,7 +4531,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -4459,7 +4540,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -4468,7 +4549,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -4477,7 +4558,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -4746,7 +4827,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -4777,7 +4858,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -4786,7 +4867,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -4795,7 +4876,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -4804,7 +4885,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -4813,7 +4894,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -4822,7 +4903,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -4831,7 +4912,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -4840,7 +4921,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -4849,7 +4930,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -4858,7 +4939,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -4867,7 +4948,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -4876,7 +4957,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -4885,7 +4966,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -4894,7 +4975,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -4903,7 +4984,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -5172,7 +5253,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -5203,7 +5284,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -5212,7 +5293,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -5221,7 +5302,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -5230,7 +5311,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -5239,7 +5320,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -5248,7 +5329,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -5257,7 +5338,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -5266,7 +5347,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -5275,7 +5356,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -5284,7 +5365,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -5293,7 +5374,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -5302,7 +5383,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -5311,7 +5392,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -5320,7 +5401,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -5329,7 +5410,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -5598,7 +5679,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -5629,7 +5710,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -5638,7 +5719,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -5647,7 +5728,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -5656,7 +5737,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -5665,7 +5746,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -5674,7 +5755,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -5683,7 +5764,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -5692,7 +5773,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -5701,7 +5782,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -5710,7 +5791,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -5719,7 +5800,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -5728,7 +5809,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -5737,7 +5818,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -5746,7 +5827,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -5755,7 +5836,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -6024,7 +6105,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -6055,7 +6136,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -6064,7 +6145,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -6073,7 +6154,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -6082,7 +6163,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -6091,7 +6172,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -6100,7 +6181,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -6109,7 +6190,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -6118,7 +6199,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -6127,7 +6208,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -6136,7 +6217,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -6145,7 +6226,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -6154,7 +6235,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -6163,7 +6244,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -6172,7 +6253,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -6181,7 +6262,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -6450,7 +6531,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
@@ -6481,7 +6562,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "storage-fc-001-zebe",
+                     "name": "storage-pool-001-adm",
                      "maj:min": "252:25",
                      "rm": false,
                      "size": "20G",
@@ -6490,7 +6571,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--104--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--104--disk--0.qcow2",
                      "maj:min": "252:44",
                      "rm": false,
                      "size": "50G",
@@ -6499,7 +6580,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--116--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--116--disk--0.qcow2",
                      "maj:min": "252:47",
                      "rm": false,
                      "size": "4M",
@@ -6508,7 +6589,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--130--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--130--disk--0.qcow2",
                      "maj:min": "252:49",
                      "rm": false,
                      "size": "4M",
@@ -6517,7 +6598,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--2.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--2.qcow2",
                      "maj:min": "252:52",
                      "rm": false,
                      "size": "200G",
@@ -6526,7 +6607,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--3.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--3.qcow2",
                      "maj:min": "252:53",
                      "rm": false,
                      "size": "100G",
@@ -6535,7 +6616,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--131--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--131--disk--0.qcow2",
                      "maj:min": "252:54",
                      "rm": false,
                      "size": "4M",
@@ -6544,7 +6625,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--132--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--132--disk--0.qcow2",
                      "maj:min": "252:56",
                      "rm": false,
                      "size": "4M",
@@ -6553,7 +6634,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--1.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--1.qcow2",
                      "maj:min": "252:59",
                      "rm": false,
                      "size": "50G",
@@ -6562,7 +6643,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--126--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--126--disk--0.qcow2",
                      "maj:min": "252:63",
                      "rm": false,
                      "size": "4M",
@@ -6571,7 +6652,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--133--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--133--disk--0.qcow2",
                      "maj:min": "252:65",
                      "rm": false,
                      "size": "4M",
@@ -6580,7 +6661,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--137--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--137--disk--0.qcow2",
                      "maj:min": "252:66",
                      "rm": false,
                      "size": "4M",
@@ -6589,7 +6670,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--141--disk--0.qcow2",
+                     "name": "storage-nvme-001-vm--141--disk--0",
                      "maj:min": "252:70",
                      "rm": false,
                      "size": "4M",
@@ -6598,7 +6679,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--138--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--138--disk--0.qcow2",
                      "maj:min": "252:71",
                      "rm": false,
                      "size": "4M",
@@ -6607,7 +6688,7 @@
                      "mountpoints": []
                   },
                   {
-                     "name": "storage-fc-001-vm--140--disk--0.qcow2",
+                     "name": "storage-pool-001-vm--140--disk--0.qcow2",
                      "maj:min": "252:80",
                      "rm": false,
                      "size": "4M",
@@ -6876,7 +6957,7 @@
                "mountpoints": [],
                "children": [
                   {
-                     "name": "zebe--test-zebe--test--lv",
+                     "name": "adm--test-adm--test--lv",
                      "maj:min": "252:73",
                      "rm": false,
                      "size": "200G",
