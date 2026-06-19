@@ -21,14 +21,13 @@
 use clap::Parser;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Read, Write};
-use std::os::unix::io::FromRawFd;
+use std::io;
 use std::path::PathBuf;
 use std::mem;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
-use libc::{socket, bind, listen, accept, AF_UNIX, SOCK_STREAM, sockaddr_un, setsockopt, SOL_SOCKET, SO_REUSEADDR, close, getpid};
+use libc::{socket, bind, listen, accept, AF_UNIX, SOCK_STREAM, sockaddr_un, setsockopt, SOL_SOCKET, SO_REUSEADDR, close, getpid, read, write};
 
 /// Default socket path for the mock daemon
 /// Note: Use a different socket than the real multipathd to avoid conflicts
@@ -130,14 +129,14 @@ fn main() {
     // List of known commands
     let known_commands = [
         "show maps json",
-        "show topology", 
+        "show topology",
         "list maps",
         "show status",
         "show config",
     ];
-    
+
     let mut command_responses: HashMap<String, Vec<String>> = HashMap::new();
-    
+
     for &command in &known_commands {
         // Check if there's a custom mapping for this command
         if let Some(file_list) = custom_mappings.get(command) {
@@ -158,14 +157,14 @@ fn main() {
             }
             continue;
         }
-        
+
         // Use default subdirectory-based lookup
         let subdir = command_to_subdir(command);
         if !subdir.is_empty() {
             // Try to load all files from the subdirectory
             let mut file_contents = Vec::new();
             let default_file = default_filename_for_command(command);
-            
+
             // First, try the default file
             let default_filepath = cli.test_data_dir.join(subdir).join(default_file);
             if let Ok(data) = fs::read_to_string(&default_filepath) {
@@ -174,15 +173,15 @@ fn main() {
                     eprintln!("Loaded test data for '{}' from {}", command, default_filepath.display());
                 }
             }
-            
+
             // Then try to load all other files in the subdirectory
             if let Ok(dir_entries) = fs::read_dir(cli.test_data_dir.join(subdir)) {
                 let mut sorted_entries: Vec<_> = dir_entries
                     .filter_map(|e| e.ok())
-                    .filter(|e| e.file_type().map_or(false, |ft| ft.is_file()))
+                    .filter(|e| e.file_type().is_ok_and(|ft| ft.is_file()))
                     .collect();
                 sorted_entries.sort_by_key(|e| e.file_name());
-                
+
                 for entry in sorted_entries {
                     let filename = entry.file_name().to_string_lossy().to_string();
                     // Skip the default file since we already loaded it
@@ -197,7 +196,7 @@ fn main() {
                     }
                 }
             }
-            
+
             if !file_contents.is_empty() {
                 command_responses.insert(command.to_string(), file_contents);
             } else {
@@ -214,11 +213,12 @@ fn main() {
             }
         }
     }
-    
+
     // Add a default response for unknown commands
     command_responses.entry("show maps json".to_string())
         .or_insert_with(|| vec![r#"{"major_version": 0, "minor_version": 1, "maps": []}"#.to_string()]);
-    
+
+    let command_responses = Arc::new(RwLock::new(command_responses));
     let file_counters = Arc::new(FileCounters::new());
 
     // Create socket
@@ -257,10 +257,10 @@ fn main() {
         }
 
         // Spawn a thread to handle the connection
-        let command_responses = command_responses.clone();
-        let file_counters = file_counters.clone();
+        let command_responses_clone = command_responses.clone();
+        let file_counters_clone = file_counters.clone();
         thread::spawn(move || {
-            handle_connection(conn_fd, command_responses, file_counters, cli.verbose);
+            handle_connection(conn_fd, command_responses_clone, file_counters_clone, cli.verbose);
         });
     }
 }
@@ -287,14 +287,10 @@ fn create_abstract_socket(socket_path: &str) -> io::Result<i32> {
     // Create abstract namespace socket address
     let mut addr: sockaddr_un = unsafe { mem::zeroed() };
     addr.sun_family = AF_UNIX as u16;
-    
+
     // Extract the actual socket name, stripping the '@' prefix if present
-    let socket_name = if socket_path.starts_with('@') {
-        &socket_path[1..]
-    } else {
-        socket_path
-    };
-    
+    let socket_name = socket_path.strip_prefix('@').unwrap_or(socket_path);
+
     let name_bytes = socket_name.as_bytes();
     if name_bytes.len() + 1 >= addr.sun_path.len() {
         unsafe { close(fd) };
@@ -303,7 +299,7 @@ fn create_abstract_socket(socket_path: &str) -> io::Result<i32> {
             "Socket path too long",
         ));
     }
-    
+
     // For abstract namespace: sun_path[0] = '\0' and name starts at sun_path[1]
     addr.sun_path[0] = 0;
     for (i, &byte) in name_bytes.iter().enumerate() {
@@ -326,7 +322,7 @@ fn create_abstract_socket(socket_path: &str) -> io::Result<i32> {
 /// Handles a single client connection
 fn handle_connection(
     conn_fd: i32,
-    command_responses: HashMap<String, Vec<String>>,
+    command_responses: Arc<RwLock<HashMap<String, Vec<String>>>>,
     file_counters: Arc<FileCounters>,
     verbose: bool,
 ) {
@@ -335,27 +331,30 @@ fn handle_connection(
     let mut total_read = 0;
 
     while total_read < 8 {
-        let mut fd_file = unsafe { std::fs::File::from_raw_fd(conn_fd) };
-        match fd_file.read(&mut len_bytes[total_read..]) {
-            Ok(0) => {
-                std::mem::forget(fd_file);
+        let result = unsafe {
+            read(
+                conn_fd,
+                len_bytes[total_read..].as_mut_ptr() as *mut libc::c_void,
+                (8 - total_read) as libc::size_t,
+            )
+        };
+        match result {
+            -1 => {
+                if verbose {
+                    eprintln!("Error reading command length: {}", io::Error::last_os_error());
+                }
+                unsafe { close(conn_fd) };
+                return;
+            }
+            0 => {
                 if verbose {
                     eprintln!("Connection closed while reading length");
                 }
                 unsafe { close(conn_fd) };
                 return;
             }
-            Ok(n) => {
-                std::mem::forget(fd_file);
-                total_read += n;
-            }
-            Err(e) => {
-                std::mem::forget(fd_file);
-                if verbose {
-                    eprintln!("Error reading command length: {}", e);
-                }
-                unsafe { close(conn_fd) };
-                return;
+            n => {
+                total_read += n as usize;
             }
         }
     }
@@ -365,32 +364,45 @@ fn handle_connection(
         eprintln!("Command length: {}", cmd_len);
     }
 
+    // Validate command length to prevent OOM attacks
+    const MAX_CMD_LEN: usize = 1024 * 1024; // 1 MB max command length
+    if cmd_len > MAX_CMD_LEN {
+        if verbose {
+            eprintln!("Command length {} exceeds maximum of {}", cmd_len, MAX_CMD_LEN);
+        }
+        unsafe { close(conn_fd) };
+        return;
+    }
+
     // Read command
     let mut command_buf = vec![0u8; cmd_len];
     let mut total_read = 0;
 
     while total_read < cmd_len {
-        let mut fd_file = unsafe { std::fs::File::from_raw_fd(conn_fd) };
-        match fd_file.read(&mut command_buf[total_read..]) {
-            Ok(0) => {
-                std::mem::forget(fd_file);
+        let result = unsafe {
+            read(
+                conn_fd,
+                command_buf[total_read..].as_mut_ptr() as *mut libc::c_void,
+                (cmd_len - total_read) as libc::size_t,
+            )
+        };
+        match result {
+            -1 => {
+                if verbose {
+                    eprintln!("Error reading command: {}", io::Error::last_os_error());
+                }
+                unsafe { close(conn_fd) };
+                return;
+            }
+            0 => {
                 if verbose {
                     eprintln!("Connection closed while reading command");
                 }
                 unsafe { close(conn_fd) };
                 return;
             }
-            Ok(n) => {
-                std::mem::forget(fd_file);
-                total_read += n;
-            }
-            Err(e) => {
-                std::mem::forget(fd_file);
-                if verbose {
-                    eprintln!("Error reading command: {}", e);
-                }
-                unsafe { close(conn_fd) };
-                return;
+            n => {
+                total_read += n as usize;
             }
         }
     }
@@ -407,31 +419,34 @@ fn handle_connection(
     }
 
     // Look up response - now uses cycling through available files
-    let response = if let Some(file_list) = command_responses.get(&command) {
-        if file_list.len() == 1 {
-            // Single file, no cycling needed
-            file_list[0].clone()
-        } else {
-            // Multiple files, cycle through them
-            let index = file_counters.next_index(&command, file_list.len());
-            if verbose {
-                eprintln!("Using file index {} for command '{}'", index, command);
+    let response = {
+        let command_responses_read = command_responses.read().unwrap();
+        if let Some(file_list) = command_responses_read.get(&command) {
+            if file_list.len() == 1 {
+                // Single file, no cycling needed
+                file_list[0].clone()
+            } else {
+                // Multiple files, cycle through them
+                let index = file_counters.next_index(&command, file_list.len());
+                if verbose {
+                    eprintln!("Using file index {} for command '{}'", index, command);
+                }
+                file_list[index].clone()
             }
-            file_list[index].clone()
-        }
-    } else if let Some(file_list) = command_responses.get("show maps json") {
-        // Fallback to show maps json responses
-        if file_list.len() == 1 {
-            file_list[0].clone()
+        } else if let Some(file_list) = command_responses_read.get("show maps json") {
+            // Fallback to show maps json responses
+            if file_list.len() == 1 {
+                file_list[0].clone()
+            } else {
+                let index = file_counters.next_index("show maps json", file_list.len());
+                file_list[index].clone()
+            }
         } else {
-            let index = file_counters.next_index("show maps json", file_list.len());
-            file_list[index].clone()
+            if verbose {
+                eprintln!("No response for command '{}', using empty", command);
+            }
+            r#"{"error": "unknown command"}"#.to_string()
         }
-    } else {
-        if verbose {
-            eprintln!("No response for command '{}', using empty", command);
-        }
-        r#"{"error": "unknown command"}"#.to_string()
     };
 
     // Send response length (8 bytes, little-endian)
@@ -440,31 +455,36 @@ fn handle_connection(
     let resp_len = resp_with_null.len() as u64;
     let len_bytes = resp_len.to_le_bytes();
 
-    {
-        let mut fd_file = unsafe { std::fs::File::from_raw_fd(conn_fd) };
-        if let Err(e) = fd_file.write_all(&len_bytes) {
-            if verbose {
-                eprintln!("Error sending response length: {}", e);
-            }
-            std::mem::forget(fd_file);
-            unsafe { close(conn_fd) };
-            return;
+    // Send response length
+    let result = unsafe {
+        write(
+            conn_fd,
+            len_bytes.as_ptr() as *const libc::c_void,
+            len_bytes.len() as libc::size_t,
+        )
+    };
+    if result < 0 {
+        if verbose {
+            eprintln!("Error sending response length: {}", io::Error::last_os_error());
         }
-        std::mem::forget(fd_file);
+        unsafe { close(conn_fd) };
+        return;
     }
 
     // Send response with null terminator
-    {
-        let mut fd_file = unsafe { std::fs::File::from_raw_fd(conn_fd) };
-        if let Err(e) = fd_file.write_all(&resp_with_null) {
-            if verbose {
-                eprintln!("Error sending response: {}", e);
-            }
-            std::mem::forget(fd_file);
-            unsafe { close(conn_fd) };
-            return;
+    let result = unsafe {
+        write(
+            conn_fd,
+            resp_with_null.as_ptr() as *const libc::c_void,
+            resp_with_null.len() as libc::size_t,
+        )
+    };
+    if result < 0 {
+        if verbose {
+            eprintln!("Error sending response: {}", io::Error::last_os_error());
         }
-        std::mem::forget(fd_file);
+        unsafe { close(conn_fd) };
+        return;
     }
 
     if verbose {

@@ -50,7 +50,7 @@ fn run_pvesh_mock(args: &[&str]) -> Output {
     let pvesh_mock_path = pvesh_mock_path();
     let test_data = test_data_dir();
     let cwd = workspace_root();
-    
+
     Command::new(pvesh_mock_path)
         .args(args)
         .env("PVE_SAN_TEST_DATA_DIR", test_data)
@@ -63,14 +63,14 @@ fn run_pvesh_mock(args: &[&str]) -> Output {
 fn run_library_test(node: &str) -> Result<SanStorageInfo, PveSanError> {
     let pvesh_mock_path = pvesh_mock_path();
     let test_data = test_data_dir();
-    
+
     // Set the environment variable so pvesh-mock can find the test data
     // Note: We don't remove it here because the library spawns subprocesses that need it
     // The test framework will clean up environment variables between tests
     env::set_var("PVE_SAN_TEST_DATA_DIR", &test_data);
-    
+
     let result = get_san_storage_info_sync_with_pvesh(node, pvesh_mock_path.to_str().unwrap());
-    
+
     result
 }
 
@@ -79,20 +79,20 @@ fn run_library_test(node: &str) -> Result<SanStorageInfo, PveSanError> {
 #[test]
 fn test_pvesh_mock_ls_qemu() {
     let output = run_pvesh_mock(&["ls", "/nodes/pve001/qemu", "--output-format", "json"]);
-    
+
     assert!(output.status.success(), "pvesh-mock ls should succeed");
-    
+
     let json_output = String::from_utf8(output.stdout).expect("Output should be valid UTF-8");
     let data: serde_json::Value = serde_json::from_str(&json_output)
         .expect("Output should be valid JSON");
-    
+
     // Should be an array
     assert!(data.is_array(), "Expected JSON array");
-    
+
     // Should have at least one VM
     let vms = data.as_array().unwrap();
-    assert!(vms.len() > 0, "Expected at least one VM");
-    
+    assert!(!vms.is_empty(), "Expected at least one VM");
+
     // Check that VMs have required fields
     for vm in vms {
         assert!(vm.get("vmid").is_some(), "VM should have vmid");
@@ -104,20 +104,20 @@ fn test_pvesh_mock_ls_qemu() {
 #[test]
 fn test_pvesh_mock_get_vm_config() {
     let output = run_pvesh_mock(&["get", "/nodes/pve001/qemu/104/config", "--output-format", "json"]);
-    
+
     assert!(output.status.success(), "pvesh-mock get should succeed");
-    
+
     let json_output = String::from_utf8(output.stdout).expect("Output should be valid UTF-8");
     let data: serde_json::Value = serde_json::from_str(&json_output)
         .expect("Output should be valid JSON");
-    
+
     // Should be an object
     assert!(data.is_object(), "Expected JSON object");
-    
+
     // Check for expected fields
     assert_eq!(data["name"], "test-vm-001");
     assert_eq!(data["virtio0"], "storage-pool-001:vm-104-disk-0.qcow2,cache=none,size=50G");
-    
+
     // Check for disk
     assert!(data.get("virtio0").is_some(), "Should have virtio0 disk");
 }
@@ -125,19 +125,19 @@ fn test_pvesh_mock_get_vm_config() {
 #[test]
 fn test_library_with_mock_list_vms() {
     let result = run_library_test("pve001");
-    
+
     match result {
         Ok(info) => {
             // Should have the correct node name
             assert_eq!(info.node, "pve001");
-            
+
             // Should have multiple running VMs
             let running_vms: Vec<_> = info.vms.iter()
                 .filter(|vm| vm.status == "running")
                 .collect();
-            
-            assert!(running_vms.len() > 0, "Expected at least one running VM, got {}", running_vms.len());
-            
+
+            assert!(!running_vms.is_empty(), "Expected at least one running VM, got {}", running_vms.len());
+
             // Check that all running VMs have valid VMIDs
             for vm in &running_vms {
                 assert!(vm.vmid > 0, "VMID should be positive");
@@ -151,24 +151,24 @@ fn test_library_with_mock_list_vms() {
 #[test]
 fn test_library_with_mock_parse_vm_104() {
     let result = run_library_test("pve001");
-    
+
     match result {
         Ok(info) => {
             // Find VM with ID 104
             let vm_104 = info.vms.iter().find(|vm| vm.vmid == 104);
             assert!(vm_104.is_some(), "Expected to find VM 104");
-            
+
             let vm = vm_104.unwrap();
             assert_eq!(vm.name, "test-vm-001");
             assert!(vm.status == "running");
-            
+
             // Check disks
             assert!(!vm.disks.is_empty(), "VM 104 should have at least one disk");
-            
+
             // Find the virtio0 disk
             let virtio0 = vm.disks.iter().find(|d| d.device_id == "virtio0");
             assert!(virtio0.is_some(), "Expected to find virtio0 disk");
-            
+
             let disk = virtio0.unwrap();
             assert_eq!(disk.storage, "storage-pool-001:vm-104-disk-0.qcow2");
             assert_eq!(disk.size_bytes, Some(50 * 1024 * 1024 * 1024)); // 50G
@@ -180,21 +180,21 @@ fn test_library_with_mock_parse_vm_104() {
 #[test]
 fn test_library_with_mock_parse_vm_117() {
     let result = run_library_test("pve001");
-    
+
     match result {
         Ok(info) => {
             // Find VM with ID 117 (has multiple disks including efidisk)
             let vm_117 = info.vms.iter().find(|vm| vm.vmid == 117);
             assert!(vm_117.is_some(), "Expected to find VM 117");
-            
+
             let vm = vm_117.unwrap();
             assert_eq!(vm.name, "test-vm-005");
-            
+
             // Should have virtio0 and efidisk0
             let disk_ids: Vec<_> = vm.disks.iter().map(|d| &d.device_id).collect();
             assert!(disk_ids.contains(&&"virtio0".to_string()), "Should have virtio0");
             assert!(disk_ids.contains(&&"efidisk0".to_string()), "Should have efidisk0");
-            
+
             // Check virtio0 disk size
             let virtio0 = vm.disks.iter().find(|d| d.device_id == "virtio0").unwrap();
             assert_eq!(virtio0.size_bytes, Some(100 * 1024 * 1024 * 1024)); // 100G
@@ -206,21 +206,21 @@ fn test_library_with_mock_parse_vm_117() {
 #[test]
 fn test_library_with_mock_parse_vm_141() {
     let result = run_library_test("pve001");
-    
+
     match result {
         Ok(info) => {
             // Find VM with ID 141 (has nvme storage)
             let vm_141 = info.vms.iter().find(|vm| vm.vmid == 141);
             assert!(vm_141.is_some(), "Expected to find VM 141");
-            
+
             let vm = vm_141.unwrap();
             assert_eq!(vm.name, "test-vm-013");
-            
+
             // Should have scsi0 and efidisk0
             let disk_ids: Vec<_> = vm.disks.iter().map(|d| &d.device_id).collect();
             assert!(disk_ids.contains(&&"scsi0".to_string()), "Should have scsi0");
             assert!(disk_ids.contains(&&"efidisk0".to_string()), "Should have efidisk0");
-            
+
             // Check scsi0 disk
             let scsi0 = vm.disks.iter().find(|d| d.device_id == "scsi0").unwrap();
             assert_eq!(scsi0.storage, "storage-nvme-001:vm-141-disk-0");
@@ -233,20 +233,20 @@ fn test_library_with_mock_parse_vm_141() {
 #[test]
 fn test_library_with_mock_parse_vm_145() {
     let result = run_library_test("pve001");
-    
+
     match result {
         Ok(info) => {
             // Find VM with ID 145 (has scsi0 with size=20G)
             let vm_145 = info.vms.iter().find(|vm| vm.vmid == 145);
             assert!(vm_145.is_some(), "Expected to find VM 145");
-            
+
             let vm = vm_145.unwrap();
             assert_eq!(vm.name, "test-vm-015");
-            
+
             // Should have scsi0
             let scsi0 = vm.disks.iter().find(|d| d.device_id == "scsi0");
             assert!(scsi0.is_some(), "Expected to find scsi0 disk");
-            
+
             let disk = scsi0.unwrap();
             assert_eq!(disk.storage, "storage-pool-001:vm-145-disk-1.qcow2");
             assert_eq!(disk.size_bytes, Some(20 * 1024 * 1024 * 1024)); // 20G
@@ -258,20 +258,20 @@ fn test_library_with_mock_parse_vm_145() {
 #[test]
 fn test_library_with_mock_parse_vm_147() {
     let result = run_library_test("pve001");
-    
+
     match result {
         Ok(info) => {
             // Find VM with ID 147 (has sata1)
             let vm_147 = info.vms.iter().find(|vm| vm.vmid == 147);
             assert!(vm_147.is_some(), "Expected to find VM 147");
-            
+
             let vm = vm_147.unwrap();
             assert_eq!(vm.name, "test-vm-016");
-            
+
             // Should have sata1
             let sata1 = vm.disks.iter().find(|d| d.device_id == "sata1");
             assert!(sata1.is_some(), "Expected to find sata1 disk");
-            
+
             let disk = sata1.unwrap();
             assert_eq!(disk.storage, "storage-pool-001:vm-147-disk-1.qcow2");
             assert_eq!(disk.size_bytes, Some(100 * 1024 * 1024 * 1024)); // 100G
@@ -284,41 +284,30 @@ fn test_library_with_mock_parse_vm_147() {
 fn test_pvesh_not_found_error() {
     // Test with a non-existent pvesh command
     let result = get_san_storage_info_sync_with_pvesh("pve001", "nonexistent-pvesh-command");
-    
+
     match result {
         Ok(_) => panic!("Expected error when pvesh command not found"),
         Err(e) => {
-            // Should get PveshNotFound error
-            assert!(matches!(e, PveSanError::PveshNotFound));
+            // With the new implementation, we get a PveshError when the command doesn't exist
+            // (the error happens when trying to spawn the command)
+            assert!(matches!(e, PveSanError::PveshError(_)));
         }
     }
 }
 
 #[test]
 fn test_node_not_specified_error() {
-    // Test with empty node
-    use libpve_san::{PveSanClient, PveSanConfig};
-    
-    let config = PveSanConfig {
-        node: String::new(),
-        pvesh_command: "pvesh".to_string(),
-    };
-    
-    let result = PveSanClient::new(config);
-    
-    match result {
-        Ok(_) => panic!("Expected error when node not specified"),
-        Err(e) => {
-            // Should get NoNodeError
-            assert!(matches!(e, PveSanError::NoNodeError));
-        }
-    }
+    // Test with empty node - should fail at config creation
+    use libpve_san::{PveSanConfig, PveSanError};
+
+    let config_result = PveSanConfig::with_node(String::new());
+    assert!(matches!(config_result, Err(PveSanError::NoNodeError)));
 }
 
 #[test]
 fn test_stopped_vms_not_included() {
     let result = run_library_test("pve001");
-    
+
     match result {
         Ok(info) => {
             // VM 130 is stopped, should not be in the list
@@ -332,7 +321,7 @@ fn test_stopped_vms_not_included() {
 #[test]
 fn test_vm_tags_preserved() {
     let result = run_library_test("pve001");
-    
+
     match result {
         Ok(info) => {
             // VM 145 has tags

@@ -46,9 +46,9 @@ struct Cli {
     /// The path to query (e.g., /nodes/pve001/qemu)
     path: String,
 
-    /// Output format
-    #[arg(long, short = 'o', value_name = "FORMAT")]
-    output_format: Option<String>,
+    /// Output format (default: json)
+    #[arg(long, short = 'o', value_name = "FORMAT", default_value = "json")]
+    output_format: String,
 
     /// Verbose output
     #[arg(long, short)]
@@ -68,13 +68,13 @@ fn main() {
     let cli = Cli::parse();
 
     if cli.verbose {
-        eprintln!("pvesh-mock: command={:?}, path={}, output_format={:?}", 
+        eprintln!("pvesh-mock: command={:?}, path={}, output_format={:?}",
                  cli.command, cli.path, cli.output_format);
     }
 
     // Parse the path to extract node and vmid if present
     let path_parts: Vec<&str> = cli.path.trim_matches('/').split('/').collect();
-    
+
     if cli.verbose {
         eprintln!("Path parts: {:?}", path_parts);
     }
@@ -110,15 +110,13 @@ fn main() {
             handle_get_vm_config(node, vmid, &test_data_dir)
         }
         _ => {
-            eprintln!("Error: Unsupported path for command: {:?}/{:?} ({:?})", 
+            eprintln!("Error: Unsupported path for command: {:?}/{:?} ({:?})",
                      cli.command, cli.path, path_parts);
             process::exit(1);
         }
     };
 
-    let output_format = cli.output_format.as_deref().unwrap_or("json");
-    
-    match output_format {
+    match &cli.output_format as &str {
         "json" | "json-pretty" => {
             // Output as JSON
             let json = match response {
@@ -128,56 +126,66 @@ fn main() {
                     process::exit(1);
                 }
             };
-            
-            if output_format == "json-pretty" {
+
+            if &cli.output_format == "json-pretty" {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
-                    let pretty = serde_json::to_string_pretty(&parsed).unwrap();
-                    io::stdout().write_all(pretty.as_bytes()).unwrap();
+                    let pretty = serde_json::to_string_pretty(&parsed)
+                        .unwrap_or_else(|_| json.clone());
+                    if let Err(e) = io::stdout().write_all(pretty.as_bytes()) {
+                        eprintln!("Error writing to stdout: {}", e);
+                        process::exit(1);
+                    }
                 } else {
                     // Not valid JSON, just output as-is
-                    io::stdout().write_all(json.as_bytes()).unwrap();
+                    if let Err(e) = io::stdout().write_all(json.as_bytes()) {
+                        eprintln!("Error writing to stdout: {}", e);
+                        process::exit(1);
+                    }
                 }
             } else {
-                io::stdout().write_all(json.as_bytes()).unwrap();
+                if let Err(e) = io::stdout().write_all(json.as_bytes()) {
+                    eprintln!("Error writing to stdout: {}", e);
+                    process::exit(1);
+                }
             }
         }
         _ => {
             // For non-JSON formats, we don't support them in mock
-            eprintln!("Error: Unsupported output format: {}", output_format);
+            eprintln!("Error: Unsupported output format: {}", cli.output_format);
             process::exit(1);
         }
     }
 }
 
-fn handle_ls_nodes_qemu(node: &str, test_data_dir: &PathBuf) -> Option<String> {
+fn handle_ls_nodes_qemu(node: &str, test_data_dir: &std::path::Path) -> Option<String> {
     // Look for test data file
     let filename = format!("get_nodes/{}_qemu.json", node);
     let filepath = test_data_dir.join(&filename);
-    
+
     if let Ok(data) = fs::read_to_string(&filepath) {
         return Some(data);
     }
-    
+
     // Try with default node name
     let default_filepath = test_data_dir.join("get_nodes/pve001_qemu.json");
     if let Ok(data) = fs::read_to_string(&default_filepath) {
         return Some(data);
     }
-    
+
     None
 }
 
-fn handle_get_vm_config(_node: &str, vmid: &str, test_data_dir: &PathBuf) -> Option<String> {
+fn handle_get_vm_config(_node: &str, vmid: &str, test_data_dir: &std::path::Path) -> Option<String> {
     // Look for test data file in config subdirectory
     let filename = format!("{}.json", vmid);
     let filepath = test_data_dir
         .join("get_nodes")
         .join("config")
         .join(&filename);
-    
+
     if let Ok(data) = fs::read_to_string(&filepath) {
         return Some(data);
     }
-    
+
     None
 }

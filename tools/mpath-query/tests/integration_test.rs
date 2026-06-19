@@ -18,37 +18,57 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::env;
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-const MOCKD_PATH: &str = "../../target/release/mpath-mockd";
-const TEST_DATA_DIR: &str = "../../test-data/multipathd";
+/// Helper to get the workspace root directory
+fn workspace_root() -> PathBuf {
+    // CARGO_MANIFEST_DIR is the directory containing mpath-query's Cargo.toml
+    // which is /home/bzed/workspace/conova/vibe/pve-san-fenced/tools/mpath-query
+    // We need to go up two levels to get the workspace root
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap()
+        .parent().unwrap()
+        .to_path_buf()
+}
+
+/// Get the path to the mpath-mockd binary
+fn mockd_path() -> PathBuf {
+    workspace_root().join("target/debug/mpath-mockd")
+}
+
+/// Get the path to the test data directory
+fn test_data_dir() -> PathBuf {
+    workspace_root().join("test-data/multipathd")
+}
 
 /// Starts the mock daemon with a unique socket for each test
 fn start_mock_daemon(test_name: &str) -> (Child, String) {
     let socket_name = format!("@/tmp/test-mpath-mock-{}-{}", test_name, std::process::id());
-    let daemon = Command::new(MOCKD_PATH)
+    let daemon = Command::new(mockd_path())
         .arg("--socket")
         .arg(&socket_name)
         .arg("--test-data-dir")
-        .arg(TEST_DATA_DIR)
+        .arg(test_data_dir())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .expect("Failed to start mock daemon");
-    
+
     (daemon, socket_name)
 }
 
 /// Waits for the mock daemon to start listening
 fn wait_for_daemon(daemon: &mut Child, socket_path: &str, timeout: Duration) -> Result<(), String> {
     let start = Instant::now();
-    
+
     while start.elapsed() < timeout {
-        if daemon.try_wait().map_or(false, |o| o.is_some()) {
+        if daemon.try_wait().is_ok_and(|o| o.is_some()) {
             return Err("Daemon exited".to_string());
         }
-        
+
         // Try to connect using mpath-query
         let result = Command::new("../../target/release/mpath-query")
             .arg("--socket")
@@ -60,38 +80,38 @@ fn wait_for_daemon(daemon: &mut Child, socket_path: &str, timeout: Duration) -> 
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
-        
+
         if let Ok(status) = result {
             if status.success() {
                 return Ok(());
             }
         }
-        
+
         std::thread::sleep(Duration::from_millis(100));
     }
-    
+
     Err("Timeout waiting for daemon".to_string())
 }
 
 #[test]
 fn test_default_command_to_stdout() {
     let (mut daemon, socket_path) = start_mock_daemon("test_default");
-    
+
     if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
         daemon.kill().ok();
         panic!("Mock daemon did not start in time");
     }
-    
+
     let result = Command::new("../../target/release/mpath-query")
         .arg("--socket")
         .arg(&socket_path)
         .arg("-c")
         .arg("show maps json")
         .output();
-    
+
     daemon.kill().ok();
     daemon.wait().ok();
-    
+
     match result {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -107,12 +127,12 @@ fn test_default_command_to_stdout() {
 #[test]
 fn test_output_to_file() {
     let (mut daemon, socket_path) = start_mock_daemon("test_output_file");
-    
+
     if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
         daemon.kill().ok();
         panic!("Mock daemon did not start in time");
     }
-    
+
     let output_path = "/tmp/test_mpath_query_output.json";
     let result = Command::new("../../target/release/mpath-query")
         .arg("--socket")
@@ -122,10 +142,10 @@ fn test_output_to_file() {
         .arg("-o")
         .arg(output_path)
         .status();
-    
+
     daemon.kill().ok();
     daemon.wait().ok();
-    
+
     match result {
         Ok(status) if status.success() => {
             let content = std::fs::read_to_string(output_path)
@@ -142,22 +162,22 @@ fn test_output_to_file() {
 #[test]
 fn test_custom_command() {
     let (mut daemon, socket_path) = start_mock_daemon("test_custom_cmd");
-    
+
     if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
         daemon.kill().ok();
         panic!("Mock daemon did not start in time");
     }
-    
+
     let result = Command::new("../../target/release/mpath-query")
         .arg("--socket")
         .arg(&socket_path)
         .arg("-c")
         .arg("show status")
         .output();
-    
+
     daemon.kill().ok();
     daemon.wait().ok();
-    
+
     match result {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -171,21 +191,21 @@ fn test_custom_command() {
 #[test]
 fn test_subcommand() {
     let (mut daemon, socket_path) = start_mock_daemon("test_subcommand");
-    
+
     if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
         daemon.kill().ok();
         panic!("Mock daemon did not start in time");
     }
-    
+
     let result = Command::new("../../target/release/mpath-query")
         .arg("--socket")
         .arg(&socket_path)
         .arg("show-maps-json")
         .output();
-    
+
     daemon.kill().ok();
     daemon.wait().ok();
-    
+
     match result {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -199,22 +219,22 @@ fn test_subcommand() {
 #[test]
 fn test_list_maps_command() {
     let (mut daemon, socket_path) = start_mock_daemon("test_list_maps");
-    
+
     if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
         daemon.kill().ok();
         panic!("Mock daemon did not start in time");
     }
-    
+
     let result = Command::new("../../target/release/mpath-query")
         .arg("--socket")
         .arg(&socket_path)
         .arg("-c")
         .arg("list maps")
         .output();
-    
+
     daemon.kill().ok();
     daemon.wait().ok();
-    
+
     match result {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -228,12 +248,12 @@ fn test_list_maps_command() {
 #[test]
 fn test_verbose_mode() {
     let (mut daemon, socket_path) = start_mock_daemon("test_verbose");
-    
+
     if wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_err() {
         daemon.kill().ok();
         panic!("Mock daemon did not start in time");
     }
-    
+
     let result = Command::new("../../target/release/mpath-query")
         .arg("--socket")
         .arg(&socket_path)
@@ -243,10 +263,10 @@ fn test_verbose_mode() {
         .arg("-o")
         .arg("/dev/null")
         .output();
-    
+
     daemon.kill().ok();
     daemon.wait().ok();
-    
+
     match result {
         Ok(output) if output.status.success() => {
             let stderr = String::from_utf8_lossy(&output.stderr);
