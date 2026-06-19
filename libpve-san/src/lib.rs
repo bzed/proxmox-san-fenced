@@ -21,8 +21,8 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use lsblk::BlockDevice;
 use log::warn;
+use lsblk::BlockDevice;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
@@ -63,7 +63,7 @@ pub enum PveSanError {
 pub type PveSanResult<T> = Result<T, PveSanError>;
 
 /// Information about a VM's disk
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VmDisk {
     /// The disk identifier (e.g., "scsi0", "virtio0")
     pub device_id: String,
@@ -200,7 +200,7 @@ impl PveSanConfig {
 
     /// Creates a new PveSanConfig with the given node name and default pvesh command.
     pub fn with_node(node: impl Into<String>) -> PveSanResult<Self> {
-        Self::new(node, None)
+        Self::new(node, /*pvesh_command*/ None)
     }
 
     /// Returns the node name.
@@ -246,6 +246,7 @@ impl PveSanClient {
     }
 
     /// Retrieves information about all running VMs and their disks.
+    #[tracing::instrument(skip(self))]
     pub async fn get_san_storage_info(&self) -> PveSanResult<SanStorageInfo> {
         let node = self.config.node.clone();
         let vms = self.list_running_vms().await?;
@@ -257,7 +258,7 @@ impl PveSanClient {
                     let name = config_map
                         .get("name")
                         .cloned()
-                        .unwrap_or_else(|| format!("vm-{}", vmid));
+                        .unwrap_or_else(|| format!("vm-{vmid}"));
 
                     let disks = self.extract_disks(&config_map)?;
 
@@ -269,7 +270,7 @@ impl PveSanClient {
                     });
                 }
                 Err(e) => {
-                    warn!("Failed to get config for VM {}: {}", vmid, e);
+                    warn!("Failed to get config for VM {vmid}: {e}");
                     continue;
                 }
             }
@@ -284,9 +285,10 @@ impl PveSanClient {
         })
     }
 
+    #[tracing::instrument(skip(self))]
     async fn list_running_vms(&self) -> PveSanResult<Vec<(u64, String)>> {
         let node = &self.config.node;
-        let path = format!("/nodes/{}/qemu", node);
+        let path = format!("/nodes/{node}/qemu");
 
         let json_output = self.run_pvesh_ls(&path).await?;
 
@@ -295,9 +297,9 @@ impl PveSanClient {
 
         let mut vms = Vec::new();
         for item in data {
-            let vmid = item["vmid"]
-                .as_u64()
-                .ok_or_else(|| PveSanError::ListVmError("VMID is missing or not a number".to_string()))?;
+            let vmid = item["vmid"].as_u64().ok_or_else(|| {
+                PveSanError::ListVmError("VMID is missing or not a number".to_string())
+            })?;
             let status = item["status"].as_str().unwrap_or("unknown").to_string();
 
             if status == "running" {
@@ -308,12 +310,15 @@ impl PveSanClient {
         Ok(vms)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_vm_config(&self, vmid: u64) -> PveSanResult<HashMap<String, String>> {
         let local_path = if let Ok(test_dir) = std::env::var("PVE_SAN_TEST_DATA_DIR") {
             let path = std::path::Path::new(&test_dir)
                 .parent()
                 .map(|p| p.join("pve/local/qemu-server").join(format!("{vmid}.conf")))
-                .unwrap_or_else(|| std::path::PathBuf::from(format!("/etc/pve/local/qemu-server/{vmid}.conf")));
+                .unwrap_or_else(|| {
+                    std::path::PathBuf::from(format!("/etc/pve/local/qemu-server/{vmid}.conf"))
+                });
             if path.exists() {
                 path.to_string_lossy().to_string()
             } else {
@@ -346,12 +351,15 @@ impl PveSanClient {
                 for (key, value) in obj {
                     // Convert JSON value to string
                     let value_str = match value {
-                        serde_json::Value::String(s) => s.clone(),
-                        serde_json::Value::Number(n) => n.to_string(),
-                        serde_json::Value::Bool(b) => b.to_string(),
                         serde_json::Value::Null => "".to_string(),
-                        _ => serde_json::to_string(value)
-                            .unwrap_or_else(|_| format!("<unrepresentable JSON value: {:?}>", value)),
+                        serde_json::Value::Bool(b) => b.to_string(),
+                        serde_json::Value::Number(n) => n.to_string(),
+                        serde_json::Value::String(s) => s.clone(),
+                        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                            serde_json::to_string(value).unwrap_or_else(|_| {
+                                format!("<unrepresentable JSON value: {value:?}>")
+                            })
+                        }
                     };
                     config_map.insert(key.clone(), value_str);
                 }
@@ -418,7 +426,9 @@ impl PveSanClient {
         let parts: Vec<&str> = value.split(',').collect();
 
         if parts.is_empty() {
-            return Err(PveSanError::ConfigParseError("Empty disk value".to_string()));
+            return Err(PveSanError::ConfigParseError(
+                "Empty disk value".to_string(),
+            ));
         }
 
         let storage_part = parts[0];
@@ -438,10 +448,12 @@ impl PveSanClient {
     }
 
     fn get_block_devices(&self) -> PveSanResult<Vec<BlockDeviceInfo>> {
-        let devices = BlockDevice::list()
-            .map_err(|e| PveSanError::LsblkError(e.to_string()))?;
+        let devices = BlockDevice::list().map_err(|e| PveSanError::LsblkError(e.to_string()))?;
 
-        Ok(devices.into_iter().map(|device| self.convert_block_device(&device)).collect())
+        Ok(devices
+            .into_iter()
+            .map(|device| self.convert_block_device(&device))
+            .collect())
     }
 
     fn convert_block_device(&self, device: &BlockDevice) -> BlockDeviceInfo {
@@ -464,7 +476,12 @@ impl PveSanClient {
             None
         };
 
-        let size = device.capacity().ok().flatten().map(|c| c * 512).unwrap_or(0);
+        let size = device
+            .capacity()
+            .ok()
+            .flatten()
+            .map(|c| c * 512)
+            .unwrap_or(0);
 
         BlockDeviceInfo {
             name,
@@ -482,16 +499,21 @@ impl PveSanClient {
     }
 
     /// Run pvesh ls command to list resources at the given path
+    #[tracing::instrument(skip(self))]
     async fn run_pvesh_ls(&self, path: &str) -> PveSanResult<String> {
-        self.run_pvesh(&["ls", path, "--output-format", "json"]).await
+        self.run_pvesh(&["ls", path, "--output-format", "json"])
+            .await
     }
 
     /// Run pvesh get command to retrieve a specific resource
+    #[tracing::instrument(skip(self))]
     async fn run_pvesh_get(&self, path: &str) -> PveSanResult<String> {
-        self.run_pvesh(&["get", path, "--output-format", "json"]).await
+        self.run_pvesh(&["get", path, "--output-format", "json"])
+            .await
     }
 
     /// Execute a pvesh command and return its stdout as a string
+    #[tracing::instrument(skip(self))]
     async fn run_pvesh(&self, args: &[&str]) -> PveSanResult<String> {
         let output = Command::new(&self.config.pvesh_command)
             .args(args)
@@ -499,20 +521,20 @@ impl PveSanClient {
             .stderr(Stdio::piped())
             .output()
             .map_err(|e| {
-                PveSanError::PveshError(format!("Failed to spawn {}: {}", self.config.pvesh_command, e))
+                let cmd = &self.config.pvesh_command;
+                PveSanError::PveshError(format!("Failed to spawn {cmd}: {e}"))
             })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            let status = output.status;
             return Err(PveSanError::PveshError(format!(
-                "pvesh command failed with status {}: {}",
-                output.status,
-                stderr
+                "pvesh command failed with status {status}: {stderr}"
             )));
         }
 
         String::from_utf8(output.stdout)
-            .map_err(|e| PveSanError::PveshError(format!("Invalid UTF-8 output: {}", e)))
+            .map_err(|e| PveSanError::PveshError(format!("Invalid UTF-8 output: {e}")))
     }
 
     fn parse_size(size_str: &str) -> Option<u64> {
@@ -547,24 +569,16 @@ impl PveSanClient {
             parse_and_convert(num, 1024 * 1024 * 1024 * 1024)
         } else {
             // Try to parse as plain number (bytes)
-            size_str.parse::<u64>().ok()
+            size_str
+                .parse::<u64>()
+                .ok()
                 .or_else(|| size_str.parse::<f64>().ok().map(|n| n as u64))
         }
     }
 }
 
-/// Retrieves SAN storage information asynchronously for the specified node using the default pvesh command.
-///
-/// # Arguments
-///
-/// * `node` - The node name to query
-///
-/// # Returns
-///
-/// Returns the SAN storage information on success.
-pub async fn get_san_storage_info(
-    node: &str,
-) -> PveSanResult<SanStorageInfo> {
+#[tracing::instrument]
+pub async fn get_san_storage_info(node: &str) -> PveSanResult<SanStorageInfo> {
     let config = PveSanConfig::with_node(node)?;
     let client = PveSanClient::new(config);
     client.get_san_storage_info().await
@@ -572,6 +586,7 @@ pub async fn get_san_storage_info(
 
 /// Get SAN storage info with a custom pvesh command (for testing)
 #[cfg_attr(not(test), allow(dead_code))]
+#[tracing::instrument]
 pub async fn get_san_storage_info_with_pvesh(
     node: &str,
     pvesh_command: &str,
@@ -581,20 +596,14 @@ pub async fn get_san_storage_info_with_pvesh(
     client.get_san_storage_info().await
 }
 
-pub fn get_san_storage_info_sync(
-    node: &str,
-) -> PveSanResult<SanStorageInfo> {
+pub fn get_san_storage_info_sync(node: &str) -> PveSanResult<SanStorageInfo> {
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        handle.block_on(async {
-            get_san_storage_info(node).await
-        })
+        handle.block_on(async { get_san_storage_info(node).await })
     } else {
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .map_err(|e| PveSanError::RuntimeError(e.to_string()))?;
-        rt.block_on(async {
-            get_san_storage_info(node).await
-        })
+        rt.block_on(async { get_san_storage_info(node).await })
     }
 }
 
@@ -605,16 +614,12 @@ pub fn get_san_storage_info_sync_with_pvesh(
     pvesh_command: &str,
 ) -> PveSanResult<SanStorageInfo> {
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        handle.block_on(async {
-            get_san_storage_info_with_pvesh(node, pvesh_command).await
-        })
+        handle.block_on(async { get_san_storage_info_with_pvesh(node, pvesh_command).await })
     } else {
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .map_err(|e| PveSanError::RuntimeError(e.to_string()))?;
-        rt.block_on(async {
-            get_san_storage_info_with_pvesh(node, pvesh_command).await
-        })
+        rt.block_on(async { get_san_storage_info_with_pvesh(node, pvesh_command).await })
     }
 }
 
@@ -624,8 +629,14 @@ mod tests {
 
     #[test]
     fn test_parse_size() {
-        assert_eq!(PveSanClient::parse_size("10G"), Some(10 * 1024 * 1024 * 1024));
-        assert_eq!(PveSanClient::parse_size("10GB"), Some(10 * 1024 * 1024 * 1024));
+        assert_eq!(
+            PveSanClient::parse_size("10G"),
+            Some(10 * 1024 * 1024 * 1024)
+        );
+        assert_eq!(
+            PveSanClient::parse_size("10GB"),
+            Some(10 * 1024 * 1024 * 1024)
+        );
         assert_eq!(PveSanClient::parse_size("1T"), Some(1024u64.pow(4)));
         assert_eq!(PveSanClient::parse_size("100M"), Some(100 * 1024 * 1024));
         assert_eq!(PveSanClient::parse_size("1024K"), Some(1024 * 1024));
@@ -649,7 +660,10 @@ mod tests {
         assert!(result.is_ok());
         let config_map = result.unwrap();
         assert_eq!(config_map.get("name"), Some(&"test-vm".to_string()));
-        assert_eq!(config_map.get("scsi0"), Some(&"local-lvm:vm-100-disk-0,size=10G".to_string()));
+        assert_eq!(
+            config_map.get("scsi0"),
+            Some(&"local-lvm:vm-100-disk-0,size=10G".to_string())
+        );
         assert_eq!(config_map.get("status"), Some(&"running".to_string()));
         assert_eq!(config_map.get("scsi1"), None); // scsi1 is in PENDING and should be ignored
     }
@@ -663,7 +677,10 @@ mod tests {
         assert!(result.is_ok());
         let config_map = result.unwrap();
         assert_eq!(config_map.get("name"), Some(&"test-vm".to_string()));
-        assert_eq!(config_map.get("scsi0"), Some(&"local-lvm:vm-100-disk-0,size=10G".to_string()));
+        assert_eq!(
+            config_map.get("scsi0"),
+            Some(&"local-lvm:vm-100-disk-0,size=10G".to_string())
+        );
         assert_eq!(config_map.get("status"), Some(&"running".to_string()));
     }
 
@@ -673,20 +690,32 @@ mod tests {
         let client = PveSanClient::new(config);
 
         // Test with storage and size
-        let (storage, metadata) = client.parse_disk_value("local-lvm:vm-100-disk-0,size=10G").unwrap();
-        assert_eq!(storage, "local-lvm:vm-100-disk-0");
-        assert_eq!(metadata.get("size"), Some(&"10G".to_string()));
+        let result = client
+            .parse_disk_value("local-lvm:vm-100-disk-0,size=10G")
+            .unwrap();
+        let expected = (
+            "local-lvm:vm-100-disk-0".to_string(),
+            HashMap::from([("size".to_string(), "10G".to_string())]),
+        );
+        assert_eq!(result, expected);
 
         // Test without additional metadata
-        let (storage, metadata) = client.parse_disk_value("local-lvm:vm-100-disk-0").unwrap();
-        assert_eq!(storage, "local-lvm:vm-100-disk-0");
-        assert!(metadata.is_empty());
+        let result = client.parse_disk_value("local-lvm:vm-100-disk-0").unwrap();
+        let expected = ("local-lvm:vm-100-disk-0".to_string(), HashMap::new());
+        assert_eq!(result, expected);
 
         // Test with multiple metadata fields
-        let (storage, metadata) = client.parse_disk_value("local-lvm:vm-100-disk-0,size=10G,backup=0").unwrap();
-        assert_eq!(storage, "local-lvm:vm-100-disk-0");
-        assert_eq!(metadata.get("size"), Some(&"10G".to_string()));
-        assert_eq!(metadata.get("backup"), Some(&"0".to_string()));
+        let result = client
+            .parse_disk_value("local-lvm:vm-100-disk-0,size=10G,backup=0")
+            .unwrap();
+        let expected = (
+            "local-lvm:vm-100-disk-0".to_string(),
+            HashMap::from([
+                ("size".to_string(), "10G".to_string()),
+                ("backup".to_string(), "0".to_string()),
+            ]),
+        );
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -696,25 +725,52 @@ mod tests {
 
         let mut config_map = HashMap::new();
         config_map.insert("name".to_string(), "test-vm".to_string());
-        config_map.insert("scsi0".to_string(), "local-lvm:vm-100-disk-0,size=10G".to_string());
+        config_map.insert(
+            "scsi0".to_string(),
+            "local-lvm:vm-100-disk-0,size=10G".to_string(),
+        );
         config_map.insert("scsi1".to_string(), "local-lvm:vm-100-disk-1".to_string());
-        config_map.insert("virtio0".to_string(), "local-lvm:vm-100-disk-2,size=20G,backup=0".to_string());
+        config_map.insert(
+            "virtio0".to_string(),
+            "local-lvm:vm-100-disk-2,size=20G,backup=0".to_string(),
+        );
         config_map.insert("status".to_string(), "running".to_string());
 
-        let disks = client.extract_disks(&config_map).unwrap();
+        let mut disks = client.extract_disks(&config_map).unwrap();
         assert_eq!(disks.len(), 3);
 
-        // Find disks by device_id since HashMap iteration order is not guaranteed
-        let scsi0 = disks.iter().find(|d| d.device_id == "scsi0").unwrap();
-        assert_eq!(scsi0.storage, "local-lvm:vm-100-disk-0");
-        assert_eq!(scsi0.size_bytes, Some(10 * 1024 * 1024 * 1024));
+        let mut expected_disks = vec![
+            VmDisk {
+                device_id: "scsi0".to_string(),
+                storage: "local-lvm:vm-100-disk-0".to_string(),
+                device_path: None,
+                device_mapper_name: None,
+                size_bytes: Some(10 * 1024 * 1024 * 1024),
+                metadata: Some(HashMap::from([("size".to_string(), "10G".to_string())])),
+            },
+            VmDisk {
+                device_id: "scsi1".to_string(),
+                storage: "local-lvm:vm-100-disk-1".to_string(),
+                device_path: None,
+                device_mapper_name: None,
+                size_bytes: None,
+                metadata: Some(HashMap::new()),
+            },
+            VmDisk {
+                device_id: "virtio0".to_string(),
+                storage: "local-lvm:vm-100-disk-2".to_string(),
+                device_path: None,
+                device_mapper_name: None,
+                size_bytes: Some(20 * 1024 * 1024 * 1024),
+                metadata: Some(HashMap::from([
+                    ("size".to_string(), "20G".to_string()),
+                    ("backup".to_string(), "0".to_string()),
+                ])),
+            },
+        ];
 
-        let scsi1 = disks.iter().find(|d| d.device_id == "scsi1").unwrap();
-        assert_eq!(scsi1.storage, "local-lvm:vm-100-disk-1");
-        assert_eq!(scsi1.size_bytes, None);
-
-        let virtio0 = disks.iter().find(|d| d.device_id == "virtio0").unwrap();
-        assert_eq!(virtio0.storage, "local-lvm:vm-100-disk-2");
-        assert_eq!(virtio0.size_bytes, Some(20 * 1024 * 1024 * 1024));
+        disks.sort_by(|a, b| a.device_id.cmp(&b.device_id));
+        expected_disks.sort_by(|a, b| a.device_id.cmp(&b.device_id));
+        assert_eq!(disks, expected_disks);
     }
 }

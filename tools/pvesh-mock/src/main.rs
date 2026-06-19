@@ -59,7 +59,7 @@ struct Cli {
 #[allow(clippy::upper_case_acronyms)]
 enum CommandType {
     #[value(alias = "ls")]
-   Ls,
+    Ls,
     #[value(alias = "get")]
     Get,
 }
@@ -68,8 +68,10 @@ fn main() {
     let cli = Cli::parse();
 
     if cli.verbose {
-        eprintln!("pvesh-mock: command={:?}, path={}, output_format={:?}",
-                 cli.command, cli.path, cli.output_format);
+        eprintln!(
+            "pvesh-mock: command={:?}, path={}, output_format={:?}",
+            cli.command, cli.path, cli.output_format
+        );
     }
 
     // Parse the path to extract node and vmid if present
@@ -110,8 +112,10 @@ fn main() {
             handle_get_vm_config(vmid, &test_data_dir)
         }
         _ => {
-            eprintln!("Error: Unsupported path for command: {:?}/{:?} ({:?})",
-                     cli.command, cli.path, path_parts);
+            eprintln!(
+                "Error: Unsupported path for command: {:?}/{:?} ({:?})",
+                cli.command, cli.path, path_parts
+            );
             process::exit(1);
         }
     };
@@ -122,15 +126,18 @@ fn main() {
             let json = match response {
                 Some(json) => json,
                 None => {
-                    eprintln!("Error: No test data found for {:?}/{}", cli.command, cli.path);
+                    eprintln!(
+                        "Error: No test data found for {:?}/{}",
+                        cli.command, cli.path
+                    );
                     process::exit(1);
                 }
             };
 
             if &cli.output_format == "json-pretty" {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
-                    let pretty = serde_json::to_string_pretty(&parsed)
-                        .unwrap_or_else(|_| json.clone());
+                    let pretty =
+                        serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| json.clone());
                     if let Err(e) = io::stdout().write_all(pretty.as_bytes()) {
                         eprintln!("Error writing to stdout: {}", e);
                         process::exit(1);

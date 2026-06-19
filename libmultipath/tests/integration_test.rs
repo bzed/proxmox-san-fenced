@@ -27,7 +27,11 @@ fn test_data_dir() -> PathBuf {
 
 /// Starts the mock daemon with a unique socket for each test
 fn start_mock_daemon(test_name: &str) -> (Child, String) {
-    let socket_name = format!("@/tmp/test-libmultipath-{}-{}", test_name, std::process::id());
+    let socket_name = format!(
+        "@/tmp/test-libmultipath-{}-{}",
+        test_name,
+        std::process::id()
+    );
     let daemon = Command::new(mockd_path())
         .arg("--socket")
         .arg(&socket_name)
@@ -70,7 +74,11 @@ fn test_send_command_success() {
     assert!(reply.is_ok(), "Failed to send command: {:?}", reply.err());
     let reply = reply.unwrap();
 
-    assert!(reply.contains("maps"), "Reply did not contain maps: {}", reply);
+    assert!(
+        reply.contains("maps"),
+        "Reply did not contain maps: {}",
+        reply
+    );
 
     daemon.kill().ok();
     daemon.wait().ok();
@@ -86,7 +94,11 @@ fn test_send_command_to_socket() {
     }
 
     let reply = libmultipath::send_multipath_command_to_socket(&socket_path, "show maps json");
-    assert!(reply.is_ok(), "Failed to send command to socket: {:?}", reply.err());
+    assert!(
+        reply.is_ok(),
+        "Failed to send command to socket: {:?}",
+        reply.err()
+    );
     let reply = reply.unwrap();
     assert!(reply.contains("maps"));
 

@@ -10,12 +10,12 @@
 //! the Free Software Foundation, either version 3 of the License, or
 //! (at your option) any later version.
 
+use log::{debug, error, info, warn};
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::Path;
 use std::time::Duration;
-use log::{debug, error, info, warn};
-use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone)]
 struct LsblkDevice {
@@ -93,16 +93,14 @@ fn storage_to_dm_name(storage: &str) -> String {
 }
 
 /// Discovers multipath devices in use by running VMs
+#[tracing::instrument]
 pub async fn discover_in_use_mpaths(
     node: &str,
     pvesh_command: &str,
 ) -> Result<HashSet<String>, Box<dyn std::error::Error + Send + Sync>> {
     let fut = async {
         // 1. Get VM and storage info using libpve-san
-        let client = libpve_san::PveSanClient::with_node_and_pvesh(
-            node,
-            pvesh_command,
-        )?;
+        let client = libpve_san::PveSanClient::with_node_and_pvesh(node, pvesh_command)?;
         let storage_info = client.get_san_storage_info().await?;
         debug!("Discovered storage info: {:?}", storage_info);
 
@@ -116,7 +114,8 @@ pub async fn discover_in_use_mpaths(
                 .output()
                 .await?;
             if !output.status.success() {
-                return Err(format!("lsblk command failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+                let err_msg = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("lsblk command failed: {err_msg}").into());
             }
             String::from_utf8(output.stdout)?
         };
@@ -142,18 +141,19 @@ pub async fn discover_in_use_mpaths(
                         for mpath in mpaths {
                             active_mpaths.insert(mpath.clone());
                         }
-                    } else if let Some(dm_name_only) = dm_name.strip_prefix("/dev/mapper/") {
-                        if let Some(mpaths) = mpath_map.get(dm_name_only) {
-                            for mpath in mpaths {
-                                active_mpaths.insert(mpath.clone());
-                            }
+                    } else if let Some(mpaths) = dm_name
+                        .strip_prefix("/dev/mapper/")
+                        .and_then(|dm| mpath_map.get(dm))
+                    {
+                        for mpath in mpaths {
+                            active_mpaths.insert(mpath.clone());
                         }
                     }
                 }
             }
         }
 
-        debug!("Final active multipath set: {:?}", active_mpaths);
+        debug!("Final active multipath set: {active_mpaths:?}");
         Ok::<_, Box<dyn std::error::Error + Send + Sync>>(active_mpaths)
     };
 
@@ -201,6 +201,7 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
 }
 
 /// Executes the fencing sequence
+#[tracing::instrument]
 pub async fn trigger_fencing(sysrq_char: &str) {
     warn!("SAN FENCER: Total persistent storage loss detected. Threshold met.");
     warn!("SAN FENCER: Initiating filesystem sync...");
@@ -275,8 +276,12 @@ impl Fencer {
 
     /// Evaluates the current state of multipath maps against the active LUN set.
     /// Returns true if fencing should be triggered.
-    pub fn update_with_maps(&mut self, maps: &[MultipathMap], active_luns: &HashSet<String>) -> bool {
-        debug!("All multipath maps returned from multipathd: {:?}", maps);
+    pub fn update_with_maps(
+        &mut self,
+        maps: &[MultipathMap],
+        active_luns: &HashSet<String>,
+    ) -> bool {
+        debug!("All multipath maps returned from multipathd: {maps:?}");
 
         let monitored_maps: Vec<&MultipathMap> = maps
             .iter()
@@ -294,12 +299,18 @@ impl Fencer {
         debug!("Monitored maps subset: {:?}", monitored_maps);
 
         for map in &monitored_maps {
-            debug!("Map {} path details: {:?}", map.name, map.path_groups);
+            let name = &map.name;
+            let pg = &map.path_groups;
+            debug!("Map {name} path details: {pg:?}");
             let is_dead = is_map_dead(map);
             let prev_dead = self.previous_map_states.insert(map.name.clone(), is_dead);
             if prev_dead != Some(is_dead) {
-                let status_str = if is_dead { "FAILED (all paths dead)" } else { "HEALTHY (active path(s) found)" };
-                info!("Multipath map {} state changed to: {status_str}", map.name);
+                let status_str = if is_dead {
+                    "FAILED (all paths dead)"
+                } else {
+                    "HEALTHY (active path(s) found)"
+                };
+                info!("Multipath map {name} state changed to: {status_str}");
             }
         }
 
@@ -320,24 +331,30 @@ impl Fencer {
             }
         }
 
-        debug!("Fencer cycle result - all_paths_dead: {all_paths_dead}, consecutive_failures: {}", self.consecutive_failures);
+        let cf = self.consecutive_failures;
+        debug!(
+            "Fencer cycle result - all_paths_dead: {all_paths_dead}, consecutive_failures: {cf}"
+        );
 
         if all_paths_dead {
             self.consecutive_failures += 1;
-            warn!(
-                "Consecutive storage failure: {}/{}",
-                self.consecutive_failures, self.max_failures
-            );
+            let cf = self.consecutive_failures;
+            let mf = self.max_failures;
+            warn!("Consecutive storage failure: {cf}/{mf}");
 
             if self.consecutive_failures >= self.max_failures {
                 let dead_map_names: Vec<String> = monitored_maps
                     .iter()
-                    .map(|m| format!("{} ({})", m.name, m.uuid))
+                    .map(|m| {
+                        let name = &m.name;
+                        let uuid = &m.uuid;
+                        format!("{name} ({uuid})")
+                    })
                     .collect();
+                let targets = &self.target_wwids;
                 warn!(
                     "DECISION: Rebooting node because all monitored multipath maps in use by running VMs have failed. \
-                     Failed monitored maps: {dead_map_names:?}. Active LUNs: {active_luns:?}. Target WWIDs: {:?}.",
-                    self.target_wwids
+                     Failed monitored maps: {dead_map_names:?}. Active LUNs: {active_luns:?}. Target WWIDs: {targets:?}."
                 );
                 return true;
             }
@@ -436,12 +453,16 @@ mod tests {
         super::build_mpath_map(&devices, /*current_mpath*/ None, &mut mpath_map);
 
         // LV vm--104--disk--0 is spanned across mpatha and mpathb
-        let mpaths_104 = mpath_map.get("storage-pool-001-vm--104--disk--0.qcow2").unwrap();
+        let mpaths_104 = mpath_map
+            .get("storage-pool-001-vm--104--disk--0.qcow2")
+            .unwrap();
         assert_eq!(mpaths_104.len(), 2);
         assert!(mpaths_104.contains("mpatha"));
         assert!(mpaths_104.contains("mpathb"));
 
-        let mpaths_116 = mpath_map.get("storage-pool-001-vm--116--disk--0.qcow2").unwrap();
+        let mpaths_116 = mpath_map
+            .get("storage-pool-001-vm--116--disk--0.qcow2")
+            .unwrap();
         assert_eq!(mpaths_116.len(), 1);
         assert!(mpaths_116.contains("mpatha"));
     }
@@ -452,19 +473,17 @@ mod tests {
         let alive_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "36001405a415ff6800000000000000000".to_string(),
-            path_groups: Some(vec![
-                PathGroup {
-                    dm_st: Some("active".to_string()),
-                    paths: Some(vec![
-                        MpathPath {
-                            dm_st: Some("active".to_string()),
-                        },
-                        MpathPath {
-                            dm_st: Some("failed".to_string()),
-                        },
-                    ]),
-                },
-            ]),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("active".to_string()),
+                paths: Some(vec![
+                    MpathPath {
+                        dm_st: Some("active".to_string()),
+                    },
+                    MpathPath {
+                        dm_st: Some("failed".to_string()),
+                    },
+                ]),
+            }]),
         };
         assert!(!is_map_dead(&alive_map));
 
@@ -472,16 +491,10 @@ mod tests {
         let missing_st_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "36001".to_string(),
-            path_groups: Some(vec![
-                PathGroup {
-                    dm_st: None,
-                    paths: Some(vec![
-                        MpathPath {
-                            dm_st: None,
-                        },
-                    ]),
-                },
-            ]),
+            path_groups: Some(vec![PathGroup {
+                dm_st: None,
+                paths: Some(vec![MpathPath { dm_st: None }]),
+            }]),
         };
         assert!(!is_map_dead(&missing_st_map));
     }
@@ -492,19 +505,17 @@ mod tests {
         let dead_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368a".to_string(),
-            path_groups: Some(vec![
-                PathGroup {
-                    dm_st: Some("active".to_string()),
-                    paths: Some(vec![
-                        MpathPath {
-                            dm_st: Some("failed".to_string()),
-                        },
-                        MpathPath {
-                            dm_st: Some("failed".to_string()),
-                        },
-                    ]),
-                },
-            ]),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("active".to_string()),
+                paths: Some(vec![
+                    MpathPath {
+                        dm_st: Some("failed".to_string()),
+                    },
+                    MpathPath {
+                        dm_st: Some("failed".to_string()),
+                    },
+                ]),
+            }]),
         };
         assert!(is_map_dead(&dead_map));
 
@@ -512,12 +523,10 @@ mod tests {
         let empty_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368b".to_string(),
-            path_groups: Some(vec![
-                PathGroup {
-                    dm_st: Some("active".to_string()),
-                    paths: Some(Vec::new()),
-                },
-            ]),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("active".to_string()),
+                paths: Some(Vec::new()),
+            }]),
         };
         assert!(is_map_dead(&empty_map));
 
@@ -533,16 +542,12 @@ mod tests {
         let ghost_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368d".to_string(),
-            path_groups: Some(vec![
-                PathGroup {
-                    dm_st: Some("active".to_string()),
-                    paths: Some(vec![
-                        MpathPath {
-                            dm_st: Some("ghost".to_string()),
-                        },
-                    ]),
-                },
-            ]),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("active".to_string()),
+                paths: Some(vec![MpathPath {
+                    dm_st: Some("ghost".to_string()),
+                }]),
+            }]),
         };
         assert!(is_map_dead(&ghost_map));
 
@@ -550,16 +555,12 @@ mod tests {
         let inactive_pg_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368e".to_string(),
-            path_groups: Some(vec![
-                PathGroup {
-                    dm_st: Some("offline".to_string()),
-                    paths: Some(vec![
-                        MpathPath {
-                            dm_st: Some("active".to_string()),
-                        },
-                    ]),
-                },
-            ]),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("offline".to_string()),
+                paths: Some(vec![MpathPath {
+                    dm_st: Some("active".to_string()),
+                }]),
+            }]),
         };
         assert!(is_map_dead(&inactive_pg_map));
     }
@@ -578,7 +579,8 @@ mod tests {
         // Clean up
         env::remove_var("PVE_SAN_TEST_DATA_DIR");
 
-        assert!(result.is_ok(), "discover_in_use_mpaths failed: {:?}", result.err());
+        let err = result.as_ref().err();
+        assert!(result.is_ok(), "discover_in_use_mpaths failed: {err:?}");
         let active_mpaths = result.unwrap();
 
         // Verify discovered multipath devices match expected ones based on running VMs in pve001
@@ -586,7 +588,10 @@ mod tests {
         assert!(active_mpaths.contains("mpathb"), "mpathb should be active");
 
         // mpathc is only used by test-adm, not any running VM, so it should NOT be active
-        assert!(!active_mpaths.contains("mpathc"), "mpathc should not be active");
+        assert!(
+            !active_mpaths.contains("mpathc"),
+            "mpathc should not be active"
+        );
     }
 
     /// A step in a declarative monitoring loop simulation scenario
@@ -603,28 +608,26 @@ mod tests {
 
     /// Runs a declarative fencing simulation scenario
     fn run_scenario(max_failures: u64, target_wwids: &[&str], steps: &[ScenarioStep]) {
-        let target_wwids_set: HashSet<String> = target_wwids.iter().map(|s| s.to_string()).collect();
+        let target_wwids_set: HashSet<String> =
+            target_wwids.iter().map(|s| s.to_string()).collect();
         let mut fencer = Fencer::new(max_failures, target_wwids_set);
 
         let test_data_base = workspace_root().join("test-data/multipathd/show_maps_json");
 
         for (i, step) in steps.iter().enumerate() {
             let file_path = test_data_base.join(step.multipath_file);
-            let content = std::fs::read_to_string(&file_path)
-                .unwrap_or_else(|e| panic!("Failed to read {}: {}", file_path.display(), e));
+            let content = std::fs::read_to_string(&file_path).unwrap_or_else(|e| {
+                let display_path = file_path.display();
+                panic!("Failed to read {display_path}: {e}");
+            });
 
             let fencing_triggered = fencer.update(&content, &step.active_luns);
 
+            let result = (fencer.consecutive_failures(), fencing_triggered);
+            let expected = (step.expected_failures, step.expected_fencing);
             assert_eq!(
-                fencer.consecutive_failures(), step.expected_failures,
-                "Step {} failed: expected {} consecutive failures, got {}",
-                i, step.expected_failures, fencer.consecutive_failures()
-            );
-
-            assert_eq!(
-                fencing_triggered, step.expected_fencing,
-                "Step {} failed: expected fencing_triggered to be {}, got {}",
-                i, step.expected_fencing, fencing_triggered
+                result, expected,
+                "Step {i} failed: expected {expected:?} (consecutive_failures, fencing_triggered), got {result:?}"
             );
         }
     }
@@ -729,14 +732,12 @@ mod tests {
     #[test]
     fn test_fencing_scenario_not_in_use() {
         // The failed LUN (mpatha) is not in use (empty active luns list)
-        let steps = vec![
-            ScenarioStep {
-                multipath_file: "failed_all_timeout.json",
-                active_luns: HashSet::new(),
-                expected_failures: 0,
-                expected_fencing: false,
-            },
-        ];
+        let steps = vec![ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: HashSet::new(),
+            expected_failures: 0,
+            expected_fencing: false,
+        }];
 
         run_scenario(6, &[], &steps);
     }

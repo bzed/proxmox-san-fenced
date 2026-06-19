@@ -1,0 +1,58 @@
+.TH PVE-SAN-FENCED 8 "June 2026" "Version 0.1.0" "PVE SAN Fenced Daemon"
+.SH NAME
+pve-san-fenced \- SAN fencing daemon for Proxmox VE
+.SH SYNOPSIS
+.B pve-san-fenced
+[\fB\-\-poll\-interval\fR \fIseconds\fR]
+[\fB\-\-discovery\-interval\fR \fIseconds\fR]
+[\fB\-\-max\-failures\fR \fIcount\fR]
+[\fB\-\-target\-wwids\fR \fIwwid1,wwid2,...\fR]
+[\fB\-\-socket\fR \fIpath\fR]
+\fB\-\-node\fR \fIname\fR
+[\fB\-\-pvesh\-command\fR \fIcommand\fR]
+[\fB\-\-sysrq\-char\fR \fIchar\fR]
+[\fB\-t\fR | \fB\-\-test\-mode\fR]
+.SH DESCRIPTION
+.B pve-san-fenced
+is a daemon that monitors the health of SAN/FC multipath storage devices actively used by running VMs on a Proxmox VE node. If all paths to the storage are lost persistently across multiple cycles, the daemon initiates a reboot or kernel panic using the Linux SysRq trigger to prevent split-brain conditions or VM corruption (fencing).
+.SH OPTIONS
+.TP
+.BI \-\-poll\-interval " seconds"
+Interval in seconds between checking multipath maps. Default is 5.
+.TP
+.BI \-\-discovery\-interval " seconds"
+Interval in seconds between rescanning running VMs and storage configurations. Default is 60.
+.TP
+.BI \-\-max\-failures " count"
+Number of consecutive polling failures (where all paths are offline/failed) required before triggering the fencing mechanism. Default is 6.
+.TP
+.BI \-\-target\-wwids " wwids"
+Specific WWIDs to monitor. If not specified, monitors all multipath maps in use by running VMs.
+.TP
+.BI \-\-socket " path"
+Multipathd abstract socket path to connect to. Default is @/org/kernel/linux/storage/multipathd.
+.TP
+.BI \-n ", " \-\-node " name"
+The name of the local Proxmox VE node. This option is required.
+.TP
+.BI \-\-pvesh\-command " command"
+Command or path to use for Proxmox VE API queries. Default is "pvesh".
+.TP
+.BI \-\-sysrq\-char " char"
+The character to write to /proc/sysrq-trigger when fencing. Default is "b" (reboot). "c" can be used for immediate kernel crash/panic.
+.TP
+.B \-t ", " \-\-test\-mode
+Run the daemon in test/dry-run mode. Fencing decisions and transitions are logged, but the reboot/panic is not triggered.
+.SH ENVIRONMENT
+.TP
+.B PVE_SAN_FENCE_DRY_RUN
+If set, the daemon acts as if running in test mode internally and exits instead of writing to the SysRq trigger.
+.SH FILES
+.TP
+.I /proc/sys/kernel/sysrq
+Used to verify if the configured SysRq character is enabled by the system's SysRq bitmask.
+.TP
+.I /proc/sysrq-trigger
+Written to trigger fencing.
+.SH AUTHOR
+Bernd Zeimetz <bernd@bzed.de>

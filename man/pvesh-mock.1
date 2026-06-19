@@ -1,0 +1,32 @@
+.TH PVESH-MOCK 1 "June 2026" "Version 0.1.0" "PVE SAN Fenced Tools"
+.SH NAME
+pvesh-mock \- Mock pvesh CLI command for testing
+.SH SYNOPSIS
+.B pvesh-mock
+[\fB\-\-output\-format\fR \fIformat\fR]
+[\fB\-v\fR | \fB\-\-verbose\fR]
+\fICOMMAND\fR
+\fIPATH\fR
+.SH DESCRIPTION
+.B pvesh-mock
+is a mock tool designed to simulate the Proxmox VE \fBpvesh\fR command-line utility. It parses the commands (such as \fBls\fR or \fBget\fR) and target paths, and returns mock test data from JSON files located in a test data directory.
+.SH OPTIONS
+.TP
+.BI \-o ", " \-\-output\-format " format"
+Format of the output. Default is "json".
+.TP
+.B \-v ", " \-\-verbose
+Enable verbose logging/output.
+.SH POSITIONALS
+.TP
+.I COMMAND
+The query command (e.g., ls, get).
+.TP
+.I PATH
+The API path to query (e.g., /nodes/pve001/qemu).
+.SH ENVIRONMENT
+.TP
+.B PVE_SAN_TEST_DATA_DIR
+Custom directory path to load test JSON configuration files from. If not specified, defaults to "test-data/pvesh".
+.SH AUTHOR
+Bernd Zeimetz <bernd@bzed.de>

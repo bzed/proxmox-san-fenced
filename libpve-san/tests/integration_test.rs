@@ -31,7 +31,8 @@ fn workspace_root() -> PathBuf {
     // which is /home/bzed/workspace/conova/vibe/pve-san-fenced/libpve-san
     // We need to go up one level to get the workspace root
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -83,8 +84,8 @@ fn test_pvesh_mock_ls_qemu() {
     assert!(output.status.success(), "pvesh-mock ls should succeed");
 
     let json_output = String::from_utf8(output.stdout).expect("Output should be valid UTF-8");
-    let data: serde_json::Value = serde_json::from_str(&json_output)
-        .expect("Output should be valid JSON");
+    let data: serde_json::Value =
+        serde_json::from_str(&json_output).expect("Output should be valid JSON");
 
     // Should be an array
     assert!(data.is_array(), "Expected JSON array");
@@ -103,20 +104,28 @@ fn test_pvesh_mock_ls_qemu() {
 
 #[test]
 fn test_pvesh_mock_get_vm_config() {
-    let output = run_pvesh_mock(&["get", "/nodes/pve001/qemu/104/config", "--output-format", "json"]);
+    let output = run_pvesh_mock(&[
+        "get",
+        "/nodes/pve001/qemu/104/config",
+        "--output-format",
+        "json",
+    ]);
 
     assert!(output.status.success(), "pvesh-mock get should succeed");
 
     let json_output = String::from_utf8(output.stdout).expect("Output should be valid UTF-8");
-    let data: serde_json::Value = serde_json::from_str(&json_output)
-        .expect("Output should be valid JSON");
+    let data: serde_json::Value =
+        serde_json::from_str(&json_output).expect("Output should be valid JSON");
 
     // Should be an object
     assert!(data.is_object(), "Expected JSON object");
 
     // Check for expected fields
     assert_eq!(data["name"], "test-vm-001");
-    assert_eq!(data["virtio0"], "storage-pool-001:vm-104-disk-0.qcow2,cache=none,size=50G");
+    assert_eq!(
+        data["virtio0"],
+        "storage-pool-001:vm-104-disk-0.qcow2,cache=none,size=50G"
+    );
 
     // Check for disk
     assert!(data.get("virtio0").is_some(), "Should have virtio0 disk");
@@ -132,11 +141,17 @@ fn test_library_with_mock_list_vms() {
             assert_eq!(info.node, "pve001");
 
             // Should have multiple running VMs
-            let running_vms: Vec<_> = info.vms.iter()
+            let running_vms: Vec<_> = info
+                .vms
+                .iter()
                 .filter(|vm| vm.status == "running")
                 .collect();
 
-            assert!(!running_vms.is_empty(), "Expected at least one running VM, got {}", running_vms.len());
+            assert!(
+                !running_vms.is_empty(),
+                "Expected at least one running VM, got {}",
+                running_vms.len()
+            );
 
             // Check that all running VMs have valid VMIDs
             for vm in &running_vms {
@@ -192,8 +207,14 @@ fn test_library_with_mock_parse_vm_117() {
 
             // Should have virtio0 and efidisk0
             let disk_ids: Vec<_> = vm.disks.iter().map(|d| &d.device_id).collect();
-            assert!(disk_ids.contains(&&"virtio0".to_string()), "Should have virtio0");
-            assert!(disk_ids.contains(&&"efidisk0".to_string()), "Should have efidisk0");
+            assert!(
+                disk_ids.contains(&&"virtio0".to_string()),
+                "Should have virtio0"
+            );
+            assert!(
+                disk_ids.contains(&&"efidisk0".to_string()),
+                "Should have efidisk0"
+            );
 
             // Check virtio0 disk size
             let virtio0 = vm.disks.iter().find(|d| d.device_id == "virtio0").unwrap();
@@ -218,8 +239,14 @@ fn test_library_with_mock_parse_vm_141() {
 
             // Should have scsi0 and efidisk0
             let disk_ids: Vec<_> = vm.disks.iter().map(|d| &d.device_id).collect();
-            assert!(disk_ids.contains(&&"scsi0".to_string()), "Should have scsi0");
-            assert!(disk_ids.contains(&&"efidisk0".to_string()), "Should have efidisk0");
+            assert!(
+                disk_ids.contains(&&"scsi0".to_string()),
+                "Should have scsi0"
+            );
+            assert!(
+                disk_ids.contains(&&"efidisk0".to_string()),
+                "Should have efidisk0"
+            );
 
             // Check scsi0 disk
             let scsi0 = vm.disks.iter().find(|d| d.device_id == "scsi0").unwrap();

@@ -29,8 +29,10 @@ fn workspace_root() -> PathBuf {
     // which is /home/bzed/workspace/conova/vibe/pve-san-fenced/tools/mpath-query
     // We need to go up two levels to get the workspace root
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -153,8 +155,7 @@ fn test_output_to_file() {
 
     match result {
         Ok(status) if status.success() => {
-            let content = std::fs::read_to_string(output_path)
-                .expect("Failed to read output file");
+            let content = std::fs::read_to_string(output_path).expect("Failed to read output file");
             assert!(content.contains("major_version"));
             assert!(content.contains("maps"));
             std::fs::remove_file(output_path).ok();

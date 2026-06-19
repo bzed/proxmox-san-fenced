@@ -1,0 +1,27 @@
+.TH MPATH-MOCKD 8 "June 2026" "Version 0.1.0" "PVE SAN Fenced Tools"
+.SH NAME
+mpath-mockd \- Mock multipathd daemon for testing
+.SH SYNOPSIS
+.B mpath-mockd
+[\fB\-\-socket\fR \fIpath\fR]
+[\fB\-\-test\-data\-dir\fR \fIdirectory\fR]
+[\fB\-\-file\-map\fR \fIcommand=filename\fR]
+[\fB\-v\fR | \fB\-\-verbose\fR]
+.SH DESCRIPTION
+.B mpath-mockd
+is a mock daemon designed to simulate the behavior of the real \fBmultipathd\fR socket API. It binds to a Unix abstract namespace socket, accepts connections, and responds to queries (such as "show maps json") using predefined mock test data stored in JSON files.
+.SH OPTIONS
+.TP
+.BI \-\-socket " path"
+The abstract Unix socket path to listen on. Default is @/org/kernel/linux/storage/multipathd-mock.
+.TP
+.BI \-\-test\-data\-dir " directory"
+Directory containing the test data JSON files. Default is "test-data/multipathd".
+.TP
+.BI \-\-file\-map " command=filename"
+Maps a multipathd command string to a mock data file (or a comma-separated list of files for cycling output in round-robin fashion). Can be specified multiple times.
+.TP
+.B \-v ", " \-\-verbose
+Enable verbose logging/output of connections and queries.
+.SH AUTHOR
+Bernd Zeimetz <bernd@bzed.de>

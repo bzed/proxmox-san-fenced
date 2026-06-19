@@ -23,8 +23,8 @@ use std::io;
 use std::mem;
 
 use libc::{
-    socket, connect, AF_UNIX, SOCK_STREAM, sockaddr_un, SOL_SOCKET, SO_RCVTIMEO,
-    SO_SNDTIMEO, setsockopt, timeval, close,
+    close, connect, setsockopt, sockaddr_un, socket, timeval, AF_UNIX, SOCK_STREAM, SOL_SOCKET,
+    SO_RCVTIMEO, SO_SNDTIMEO,
 };
 
 /// Default socket path for multipathd (abstract namespace)
@@ -84,7 +84,11 @@ impl MultipathConnection {
     /// # Returns
     ///
     /// Returns the reply as a String on success.
-    pub fn send_command_on_fd(fd: i32, command: &str, timeout_ms: Option<u64>) -> io::Result<String> {
+    pub fn send_command_on_fd(
+        fd: i32,
+        command: &str,
+        timeout_ms: Option<u64>,
+    ) -> io::Result<String> {
         // Validate fd is non-negative
         if fd < 0 {
             return Err(io::Error::new(
@@ -196,8 +200,8 @@ impl MultipathConnection {
 
     fn send_command_fd(fd: i32, command: &str) -> io::Result<()> {
         // Command string with null terminator
-        let cmd_with_null = CString::new(command)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let cmd_with_null =
+            CString::new(command).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
         let cmd_bytes = cmd_with_null.as_bytes_with_nul();
         let cmd_len = cmd_bytes.len() as u64;
 
@@ -247,7 +251,9 @@ impl MultipathConnection {
                 -1 => {
                     let err = io::Error::last_os_error();
                     // If timeout, return timeout error
-                    if err.raw_os_error() == Some(libc::EAGAIN) || err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+                    if err.raw_os_error() == Some(libc::EAGAIN)
+                        || err.raw_os_error() == Some(libc::EWOULDBLOCK)
+                    {
                         return Err(io::Error::new(
                             io::ErrorKind::TimedOut,
                             "Timeout waiting for reply",
@@ -274,7 +280,7 @@ impl MultipathConnection {
         if reply_len == 0 || reply_len > MAX_REPLY_LEN {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("Invalid reply length: {}", reply_len),
+                format!("Invalid reply length: {reply_len}"),
             ));
         }
 
@@ -294,7 +300,9 @@ impl MultipathConnection {
                 -1 => {
                     let err = io::Error::last_os_error();
                     // If timeout, return timeout error
-                    if err.raw_os_error() == Some(libc::EAGAIN) || err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+                    if err.raw_os_error() == Some(libc::EAGAIN)
+                        || err.raw_os_error() == Some(libc::EWOULDBLOCK)
+                    {
                         return Err(io::Error::new(
                             io::ErrorKind::TimedOut,
                             "Timeout waiting for reply data",
@@ -326,9 +334,8 @@ impl MultipathConnection {
             reply_buf.truncate(pos);
         }
 
-        String::from_utf8(reply_buf).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, format!("Invalid UTF-8: {}", e))
-        })
+        String::from_utf8(reply_buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Invalid UTF-8: {e}")))
     }
 }
 

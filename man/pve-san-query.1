@@ -1,0 +1,27 @@
+.TH PVE-SAN-QUERY 1 "June 2026" "Version 0.1.0" "PVE SAN Fenced Tools"
+.SH NAME
+pve-san-query \- Query Proxmox VE hosts for SAN/FC storage information
+.SH SYNOPSIS
+.B pve-san-query
+\fB\-\-node\fR \fIname\fR
+[\fB\-\-output\fR \fIfile\fR]
+[\fB\-\-pretty\fR]
+[\fB\-v\fR | \fB\-\-verbose\fR]
+.SH DESCRIPTION
+.B pve-san-query
+is a command-line tool that retrieves details of running virtual machines, their configured disks, and underlying device-mapper block devices from a Proxmox VE node. The output is structured and returned as a JSON object.
+.SH OPTIONS
+.TP
+.BI \-n ", " \-\-node " name"
+The Proxmox VE node name to query. This option is required.
+.TP
+.BI \-o ", " \-\-output " file"
+The path to the file where query results should be saved. If omitted, prints output to stdout.
+.TP
+.B \-p ", " \-\-pretty
+Enable pretty-printed formatting for the JSON output.
+.TP
+.B \-v ", " \-\-verbose
+Enable verbose logging/output.
+.SH AUTHOR
+Bernd Zeimetz <bernd@bzed.de>

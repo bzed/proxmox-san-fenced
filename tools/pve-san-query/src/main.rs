@@ -75,7 +75,11 @@ fn main() {
                                 process::exit(1);
                             }
                             if cli.verbose {
-                                eprintln!("Successfully wrote {} bytes to '{}'", json.len(), output_path);
+                                eprintln!(
+                                    "Successfully wrote {} bytes to '{}'",
+                                    json.len(),
+                                    output_path
+                                );
                             }
                         }
                         None => {

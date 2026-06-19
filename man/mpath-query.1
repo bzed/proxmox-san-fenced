@@ -1,0 +1,32 @@
+.TH MPATH-QUERY 1 "June 2026" "Version 0.1.0" "PVE SAN Fenced Tools"
+.SH NAME
+mpath-query \- Send commands to multipathd and retrieve responses
+.SH SYNOPSIS
+.B mpath-query
+[\fB\-\-command\fR \fIcommand\fR]
+[\fB\-\-output\fR \fIfile\fR]
+[\fB\-\-socket\fR \fIpath\fR]
+[\fB\-v\fR | \fB\-\-verbose\fR]
+[\fISUBCOMMAND\fR]
+.SH DESCRIPTION
+.B mpath-query
+is a CLI tool that connects to the \fBmultipathd\fR abstract namespace Unix socket, sends a query command, and returns the response. By default, it queries "show maps json" and prints it to stdout.
+.SH OPTIONS
+.TP
+.BI \-\-command " command"
+The command string to send to the multipathd socket. Default is "show maps json".
+.TP
+.BI \-\-output " file"
+File to write the command response to. If omitted, the response is written to stdout.
+.TP
+.BI \-\-socket " path"
+Abstract namespace socket path to connect to. Default is @/org/kernel/linux/storage/multipathd.
+.TP
+.B \-v ", " \-\-verbose
+Enable verbose logging/output.
+.SH SUBCOMMANDS
+.TP
+.B show-maps-json
+An alias/shortcut subcommand that sends "show maps json" to multipathd.
+.SH AUTHOR
+Bernd Zeimetz <bernd@bzed.de>

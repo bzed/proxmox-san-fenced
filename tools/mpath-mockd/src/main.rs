@@ -22,12 +22,15 @@ use clap::Parser;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
 use std::mem;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
-use libc::{socket, bind, listen, accept, AF_UNIX, SOCK_STREAM, sockaddr_un, setsockopt, SOL_SOCKET, SO_REUSEADDR, close, getpid, read, write};
+use libc::{
+    accept, bind, close, getpid, listen, read, setsockopt, sockaddr_un, socket, write, AF_UNIX,
+    SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR,
+};
 
 /// Default socket path for the mock daemon
 /// Note: Use a different socket than the real multipathd to avoid conflicts
@@ -121,7 +124,10 @@ fn main() {
             let file_list: Vec<String> = files.split(',').map(|s| s.trim().to_string()).collect();
             custom_mappings.insert(command, file_list);
         } else {
-            eprintln!("Warning: Invalid file mapping format '{}', expected command=file[s]", mapping);
+            eprintln!(
+                "Warning: Invalid file mapping format '{}', expected command=file[s]",
+                mapping
+            );
         }
     }
 
@@ -146,10 +152,17 @@ fn main() {
                 if let Ok(data) = fs::read_to_string(&filepath) {
                     file_contents.push(data);
                     if cli.verbose {
-                        eprintln!("Loaded test data for '{}' from {} (custom mapping)", command, filepath.display());
+                        eprintln!(
+                            "Loaded test data for '{}' from {} (custom mapping)",
+                            command,
+                            filepath.display()
+                        );
                     }
                 } else {
-                    eprintln!("Warning: Could not load custom test data from {}", filepath.display());
+                    eprintln!(
+                        "Warning: Could not load custom test data from {}",
+                        filepath.display()
+                    );
                 }
             }
             if !file_contents.is_empty() {
@@ -170,7 +183,11 @@ fn main() {
             if let Ok(data) = fs::read_to_string(&default_filepath) {
                 file_contents.push(data);
                 if cli.verbose {
-                    eprintln!("Loaded test data for '{}' from {}", command, default_filepath.display());
+                    eprintln!(
+                        "Loaded test data for '{}' from {}",
+                        command,
+                        default_filepath.display()
+                    );
                 }
             }
 
@@ -190,7 +207,11 @@ fn main() {
                         if let Ok(data) = fs::read_to_string(&filepath) {
                             file_contents.push(data);
                             if cli.verbose {
-                                eprintln!("Loaded additional test data for '{}' from {}", command, filepath.display());
+                                eprintln!(
+                                    "Loaded additional test data for '{}' from {}",
+                                    command,
+                                    filepath.display()
+                                );
                             }
                         }
                     }
@@ -205,7 +226,11 @@ fn main() {
                 if let Ok(data) = fs::read_to_string(&flat_filepath) {
                     command_responses.insert(command.to_string(), vec![data]);
                     if cli.verbose {
-                        eprintln!("Loaded test data for '{}' from {}", command, flat_filepath.display());
+                        eprintln!(
+                            "Loaded test data for '{}' from {}",
+                            command,
+                            flat_filepath.display()
+                        );
                     }
                 } else {
                     eprintln!("Warning: Could not load test data for '{}'", command);
@@ -215,8 +240,11 @@ fn main() {
     }
 
     // Add a default response for unknown commands
-    command_responses.entry("show maps json".to_string())
-        .or_insert_with(|| vec![r#"{"major_version": 0, "minor_version": 1, "maps": []}"#.to_string()]);
+    command_responses
+        .entry("show maps json".to_string())
+        .or_insert_with(|| {
+            vec![r#"{"major_version": 0, "minor_version": 1, "maps": []}"#.to_string()]
+        });
 
     let command_responses = Arc::new(RwLock::new(command_responses));
     let file_counters = Arc::new(FileCounters::new());
@@ -260,7 +288,12 @@ fn main() {
         let command_responses_clone = command_responses.clone();
         let file_counters_clone = file_counters.clone();
         thread::spawn(move || {
-            handle_connection(conn_fd, command_responses_clone, file_counters_clone, cli.verbose);
+            handle_connection(
+                conn_fd,
+                command_responses_clone,
+                file_counters_clone,
+                cli.verbose,
+            );
         });
     }
 }
@@ -341,7 +374,10 @@ fn handle_connection(
         match result {
             -1 => {
                 if verbose {
-                    eprintln!("Error reading command length: {}", io::Error::last_os_error());
+                    eprintln!(
+                        "Error reading command length: {}",
+                        io::Error::last_os_error()
+                    );
                 }
                 unsafe { close(conn_fd) };
                 return;
@@ -368,7 +404,10 @@ fn handle_connection(
     const MAX_CMD_LEN: usize = 1024 * 1024; // 1 MB max command length
     if cmd_len > MAX_CMD_LEN {
         if verbose {
-            eprintln!("Command length {} exceeds maximum of {}", cmd_len, MAX_CMD_LEN);
+            eprintln!(
+                "Command length {} exceeds maximum of {}",
+                cmd_len, MAX_CMD_LEN
+            );
         }
         unsafe { close(conn_fd) };
         return;
@@ -465,7 +504,10 @@ fn handle_connection(
     };
     if result < 0 {
         if verbose {
-            eprintln!("Error sending response length: {}", io::Error::last_os_error());
+            eprintln!(
+                "Error sending response length: {}",
+                io::Error::last_os_error()
+            );
         }
         unsafe { close(conn_fd) };
         return;

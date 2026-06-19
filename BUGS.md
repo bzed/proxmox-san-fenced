@@ -193,6 +193,78 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ---
 
+### 23. Violations of `clippy::uninlined_format_args`
+
+**File**: Multiple files (e.g., `libpve-san/src/lib.rs:260`, `libpve-san/src/lib.rs:289`, `libpve-san/src/lib.rs:502`, `libpve-san/src/lib.rs:507`, `libpve-san/src/lib.rs:515`, `libmultipath/src/lib.rs:277`, `libmultipath/src/lib.rs:330`, `src/main.rs:143`, and in multiple `eprintln!`/`warn!` usage).
+**Severity**: LOW
+**Status**: FIXED
+**Resolution**: Inlined formatting arguments across all library and daemon files, ensuring strict compliance with `clippy::uninlined_format_args` and `AGENTS.md` guidelines.
+
+---
+
+### 24. Violations of `clippy::collapsible_if`
+
+**File**: `src/lib.rs:146-152`
+**Severity**: LOW
+**Status**: FIXED
+**Resolution**: Collapsed nested `if let` blocks using `.and_then()` combined mapping in `src/lib.rs` to satisfy the collapsible if statements check.
+
+---
+
+### 25. Missing `/*param_name*/` for opaque positional arguments
+
+**File**: `libpve-san/src/lib.rs:203`
+**Severity**: LOW
+**Status**: FIXED
+**Resolution**: Added `/*pvesh_command*/` comment to the positional `None` argument on `libpve-san/src/lib.rs` line 203.
+
+---
+
+### 26. `match` statement uses wildcard instead of explicit arms
+
+**File**: `libpve-san/src/lib.rs:354`
+**Severity**: LOW
+**Status**: FIXED
+**Resolution**: Modified the `match` statement in `libpve-san/src/lib.rs` to explicitly match `serde_json::Value::Array` and `serde_json::Value::Object` instead of using a wildcard fallback.
+
+---
+
+### 27. Tests compare fields individually instead of whole objects
+
+**File**: `src/main.rs:193`, `libpve-san/src/lib.rs:680-690`, `libpve-san/src/lib.rs:708-718`
+**Severity**: LOW
+**Status**: FIXED
+**Resolution**: Updated cli parsing tests and libpve-san tests to construct full expected objects (such as `Cli` and `VmDisk` vectors) and verify them using whole-object equality assertions.
+
+---
+
+### 28. Tests verify statically defined values
+
+**File**: `src/main.rs:205-212`
+**Severity**: LOW
+**Status**: FIXED
+**Resolution**: Removed assertions verifying statically defined argument defaults in `src/main.rs` tests while keeping dynamic parser assertions intact.
+
+---
+
+### 29. Missing manpages for tools
+
+**File**: N/A
+**Severity**: LOW
+**Status**: FIXED
+**Resolution**: Created a `man/` directory at the repository root and generated complete manpages for all 5 tools/daemons: `mpath-query(1)`, `mpath-mockd(8)`, `pve-san-query(1)`, `pvesh-mock(1)`, and `pve-san-fenced(8)`.
+
+---
+
+### 30. Missing `#[tracing::instrument(...)]` on async functions
+
+**File**: `src/lib.rs`, `src/main.rs`, `libpve-san/src/lib.rs`
+**Severity**: LOW
+**Status**: FIXED
+**Resolution**: Added `tracing` dependency to the workspace and crates, and instrumented all async library functions in `src/lib.rs` and `libpve-san/src/lib.rs` with `#[tracing::instrument]`.
+
+---
+
 ## WONTFIX / INFO
 
 ### 21. `trigger_fencing()` uses `unsafe { libc::sync() }`

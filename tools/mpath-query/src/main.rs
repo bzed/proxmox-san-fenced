@@ -99,7 +99,11 @@ fn main() {
                         process::exit(1);
                     }
                     if cli.verbose {
-                        eprintln!("Successfully wrote {} bytes to '{}'", data.len(), output_path);
+                        eprintln!(
+                            "Successfully wrote {} bytes to '{}'",
+                            data.len(),
+                            output_path
+                        );
                     }
                 }
                 None => {
@@ -115,7 +119,9 @@ fn main() {
             eprintln!("Error: {}", e);
             if cli.verbose {
                 eprintln!("This error typically occurs when:");
-                eprintln!("  - multipathd is not running (check with: systemctl status multipathd)");
+                eprintln!(
+                    "  - multipathd is not running (check with: systemctl status multipathd)"
+                );
                 eprintln!("  - The socket path is incorrect");
                 eprintln!("  - Connection timed out");
             }

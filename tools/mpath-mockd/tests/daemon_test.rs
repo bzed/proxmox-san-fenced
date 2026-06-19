@@ -26,8 +26,10 @@ fn workspace_root() -> PathBuf {
     // which is /home/bzed/workspace/conova/vibe/pve-san-fenced/tools/mpath-mockd
     // We need to go up two levels to get the workspace root
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -48,7 +50,11 @@ fn test_data_dir() -> PathBuf {
 
 /// Starts the mock daemon with a unique socket for each test
 fn start_test_daemon(test_name: &str) -> (Child, String) {
-    let socket_name = format!("@/tmp/test-mpath-mockd-{}-{}", test_name, std::process::id());
+    let socket_name = format!(
+        "@/tmp/test-mpath-mockd-{}-{}",
+        test_name,
+        std::process::id()
+    );
     let daemon = Command::new(daemon_path())
         .arg("--socket")
         .arg(&socket_name)
@@ -99,7 +105,10 @@ fn wait_for_daemon(daemon: &mut Child, socket_path: &str, timeout: Duration) -> 
 fn test_daemon_starts() {
     let (mut daemon, socket_path) = start_test_daemon("test_daemon_starts");
 
-    assert!(wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_ok(), "Daemon should start");
+    assert!(
+        wait_for_daemon(&mut daemon, &socket_path, Duration::from_secs(2)).is_ok(),
+        "Daemon should start"
+    );
 
     daemon.kill().ok();
     daemon.wait().ok();
@@ -128,7 +137,10 @@ fn test_daemon_responds_to_command() {
     match result {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            assert!(stdout.contains("major_version"), "Response should contain major_version");
+            assert!(
+                stdout.contains("major_version"),
+                "Response should contain major_version"
+            );
             assert!(stdout.contains("maps"), "Response should contain maps");
         }
         Ok(output) => panic!("Query failed: {}", String::from_utf8_lossy(&output.stderr)),
@@ -189,7 +201,11 @@ fn test_daemon_handles_multiple_commands() {
             .status();
 
         assert!(result.is_ok(), "Failed to run query for command: {}", cmd);
-        assert!(result.unwrap().success(), "Query failed for command: {}", cmd);
+        assert!(
+            result.unwrap().success(),
+            "Query failed for command: {}",
+            cmd
+        );
     }
 
     daemon.kill().ok();
@@ -307,8 +323,14 @@ fn test_daemon_default_file_for_show_maps_json() {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             // all_active_running.json has active paths, not failed ones
-            assert!(stdout.contains("\"paths\" : 16"), "Default response should have 16 paths from all_active_running.json");
-            assert!(stdout.contains("\"dm_st\" : \"active\""), "Default response should have active paths");
+            assert!(
+                stdout.contains("\"paths\" : 16"),
+                "Default response should have 16 paths from all_active_running.json"
+            );
+            assert!(
+                stdout.contains("\"dm_st\" : \"active\""),
+                "Default response should have active paths"
+            );
         }
         Ok(output) => panic!("Query failed: {}", String::from_utf8_lossy(&output.stderr)),
         Err(e) => panic!("Failed to run query: {}", e),
@@ -376,8 +398,14 @@ fn test_daemon_custom_file_mapping() {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             // failed_all_timeout.json has 0 paths and all are failed/timeout
-            assert!(stdout.contains("\"paths\" : 0"), "Custom response should have 0 paths from failed_all_timeout.json");
-            assert!(stdout.contains("\"chk_st\" : \"i/o timeout\""), "Custom response should have timeout status");
+            assert!(
+                stdout.contains("\"paths\" : 0"),
+                "Custom response should have 0 paths from failed_all_timeout.json"
+            );
+            assert!(
+                stdout.contains("\"chk_st\" : \"i/o timeout\""),
+                "Custom response should have timeout status"
+            );
         }
         Ok(output) => panic!("Query failed: {}", String::from_utf8_lossy(&output.stderr)),
         Err(e) => panic!("Failed to run query: {}", e),
@@ -414,11 +442,19 @@ fn test_daemon_all_commands() {
             Ok(output) if output.status.success() => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for expected in expected_contents {
-                    assert!(stdout.contains(expected),
-                        "Response for '{}' should contain '{}'", command, expected);
+                    assert!(
+                        stdout.contains(expected),
+                        "Response for '{}' should contain '{}'",
+                        command,
+                        expected
+                    );
                 }
             }
-            Ok(output) => panic!("Query failed for '{}': {}", command, String::from_utf8_lossy(&output.stderr)),
+            Ok(output) => panic!(
+                "Query failed for '{}': {}",
+                command,
+                String::from_utf8_lossy(&output.stderr)
+            ),
             Err(e) => panic!("Failed to run query for '{}': {}", command, e),
         }
     }
@@ -475,18 +511,20 @@ fn test_daemon_cycles_through_files() {
     assert!(ready, "Daemon with cycling should be ready");
 
     // Make multiple queries and verify they cycle through the files
-    let results: Vec<String> = (0..4).map(|_| {
-        let result = Command::new(query_path())
-            .arg("--socket")
-            .arg(&custom_socket)
-            .arg("-c")
-            .arg("show maps json")
-            .output()
-            .expect("Failed to run query");
+    let results: Vec<String> = (0..4)
+        .map(|_| {
+            let result = Command::new(query_path())
+                .arg("--socket")
+                .arg(&custom_socket)
+                .arg("-c")
+                .arg("show maps json")
+                .output()
+                .expect("Failed to run query");
 
-        assert!(result.status.success(), "Query should succeed");
-        String::from_utf8_lossy(&result.stdout).into_owned()
-    }).collect();
+            assert!(result.status.success(), "Query should succeed");
+            String::from_utf8_lossy(&result.stdout).into_owned()
+        })
+        .collect();
 
     daemon.kill().ok();
     daemon.wait().ok();
@@ -494,12 +532,24 @@ fn test_daemon_cycles_through_files() {
     // Verify we got both types of responses (cycling between the two files)
     // all_active_running.json has "paths" : 16
     // failed_all_timeout.json has "paths" : 0
-    let active_count = results.iter().filter(|s| s.contains("\"paths\" : 16")).count();
-    let failed_count = results.iter().filter(|s| s.contains("\"paths\" : 0")).count();
+    let active_count = results
+        .iter()
+        .filter(|s| s.contains("\"paths\" : 16"))
+        .count();
+    let failed_count = results
+        .iter()
+        .filter(|s| s.contains("\"paths\" : 0"))
+        .count();
 
     // With 4 queries and 2 files, we should get 2 of each (round-robin)
-    assert_eq!(active_count, 2, "Should get 2 active responses in 4 queries");
-    assert_eq!(failed_count, 2, "Should get 2 failed responses in 4 queries");
+    assert_eq!(
+        active_count, 2,
+        "Should get 2 active responses in 4 queries"
+    );
+    assert_eq!(
+        failed_count, 2,
+        "Should get 2 failed responses in 4 queries"
+    );
 }
 
 #[test]
@@ -513,28 +563,40 @@ fn test_daemon_auto_loads_multiple_files() {
     }
 
     // Make multiple queries to show maps json
-    let results: Vec<String> = (0..4).map(|_| {
-        let result = Command::new(query_path())
-            .arg("--socket")
-            .arg(&socket_path)
-            .arg("-c")
-            .arg("show maps json")
-            .output()
-            .expect("Failed to run query");
+    let results: Vec<String> = (0..4)
+        .map(|_| {
+            let result = Command::new(query_path())
+                .arg("--socket")
+                .arg(&socket_path)
+                .arg("-c")
+                .arg("show maps json")
+                .output()
+                .expect("Failed to run query");
 
-        assert!(result.status.success(), "Query should succeed");
-        String::from_utf8_lossy(&result.stdout).into_owned()
-    }).collect();
+            assert!(result.status.success(), "Query should succeed");
+            String::from_utf8_lossy(&result.stdout).into_owned()
+        })
+        .collect();
 
     daemon.kill().ok();
     daemon.wait().ok();
 
     // With 2 files in show_maps_json/ (all_active_running.json and failed_all_timeout.json)
     // we should cycle through both
-    let active_count = results.iter().filter(|s| s.contains("\"paths\" : 16")).count();
-    let failed_count = results.iter().filter(|s| s.contains("\"paths\" : 0")).count();
+    let active_count = results
+        .iter()
+        .filter(|s| s.contains("\"paths\" : 16"))
+        .count();
+    let failed_count = results
+        .iter()
+        .filter(|s| s.contains("\"paths\" : 0"))
+        .count();
 
     // With 4 queries and 2 files, we should get 2 of each
-    assert!(active_count >= 1 && failed_count >= 1,
-        "Should cycle through multiple files, got {} active and {} failed", active_count, failed_count);
+    assert!(
+        active_count >= 1 && failed_count >= 1,
+        "Should cycle through multiple files, got {} active and {} failed",
+        active_count,
+        failed_count
+    );
 }

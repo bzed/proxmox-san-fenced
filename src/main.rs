@@ -11,20 +11,18 @@
 //! the Free Software Foundation, either version 3 of the License, or
 //! (at your option) any later version.
 
+use clap::Parser;
+use log::{debug, error, info, warn};
 use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
-use clap::Parser;
-use log::{debug, error, info, warn};
 use tokio::sync::RwLock;
 
-use pve_san_fenced::{
-    discover_in_use_mpaths, trigger_fencing, Fencer,
-};
+use pve_san_fenced::{discover_in_use_mpaths, trigger_fencing, Fencer};
 
 /// SAN fencing daemon for Proxmox VE
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, PartialEq)]
 #[command(name = "pve-san-fenced")]
 #[command(author = "PVE SAN Fenced")]
 #[command(version = "0.1.0")]
@@ -111,7 +109,8 @@ async fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
-    info!("Starting PVE SAN fencing daemon on node: {}", cli.node);
+    let node = &cli.node;
+    info!("Starting PVE SAN fencing daemon on node: {node}");
 
     validate_sysrq(&cli.sysrq_char);
 
@@ -135,7 +134,8 @@ async fn main() {
                     Ok(mpaths) => {
                         let mut lock = active_luns_clone.write().await;
                         if *lock != mpaths {
-                            info!("Active multipath devices changed. Previous: {:?}, New: {mpaths:?}", *lock);
+                            let prev = &*lock;
+                            info!("Active multipath devices changed. Previous: {prev:?}, New: {mpaths:?}");
                             *lock = mpaths;
                         }
                     }
@@ -161,20 +161,24 @@ async fn main() {
     loop {
         interval.tick().await;
 
-        debug!("Fencer monitoring state: consecutive_failures={}, max_failures={}", fencer.consecutive_failures(), fencer.max_failures());
+        let cf = fencer.consecutive_failures();
+        let mf = fencer.max_failures();
+        debug!("Fencer monitoring state: consecutive_failures={cf}, max_failures={mf}");
         let active_set = active_luns.read().await;
-        debug!("Current active LUNs set: {:?}", *active_set);
+        let active_ref = &*active_set;
+        debug!("Current active LUNs set: {active_ref:?}");
 
         // Query multipathd
-        let response = match libmultipath::send_multipath_command_to_socket(&socket, "show maps json") {
-            Ok(res) => res,
-            Err(e) => {
-                warn!("Failed to query multipathd: {e}");
-                // Incrementing consecutive failures here could trigger reboot on transient daemon restarts.
-                // We just log warning as per the specification.
-                continue;
-            }
-        };
+        let response =
+            match libmultipath::send_multipath_command_to_socket(&socket, "show maps json") {
+                Ok(res) => res,
+                Err(e) => {
+                    warn!("Failed to query multipathd: {e}");
+                    // Incrementing consecutive failures here could trigger reboot on transient daemon restarts.
+                    // We just log warning as per the specification.
+                    continue;
+                }
+            };
 
         if fencer.update(&response, &active_set) {
             if test_mode {
@@ -192,23 +196,30 @@ mod tests {
 
     #[test]
     fn test_cli_parsing() {
-        let args = vec!["pve-san-fenced", "-n", "pve01", "-t"];
+        let args = vec!["pve-san-fenced", "-n", "pve01", "-t", "--sysrq-char", "c"];
         let cli = Cli::try_parse_from(args).unwrap();
-        assert!(cli.test_mode);
-        assert_eq!(cli.node, "pve01");
+        let expected = Cli {
+            poll_interval: 5,
+            discovery_interval: 60,
+            max_failures: 6,
+            target_wwids: vec![],
+            socket: libmultipath::DEFAULT_SOCKET.to_string(),
+            node: "pve01".to_string(),
+            pvesh_command: "pvesh".to_string(),
+            test_mode: true,
+            sysrq_char: "c".to_string(),
+        };
+        assert_eq!(cli, expected);
 
-        let args2 = vec!["pve-san-fenced", "-n", "pve01", "--test-mode"];
+        let args2 = vec![
+            "pve-san-fenced",
+            "-n",
+            "pve01",
+            "--test-mode",
+            "--sysrq-char",
+            "c",
+        ];
         let cli2 = Cli::try_parse_from(args2).unwrap();
-        assert!(cli2.test_mode);
-
-        let args3 = vec!["pve-san-fenced", "-n", "pve01"];
-        let cli3 = Cli::try_parse_from(args3).unwrap();
-        assert!(!cli3.test_mode);
-        assert_eq!(cli3.sysrq_char, "b");
-
-        let args4 = vec!["pve-san-fenced", "-n", "pve01", "--sysrq-char", "c"];
-        let cli4 = Cli::try_parse_from(args4).unwrap();
-        assert_eq!(cli4.sysrq_char, "c");
+        assert_eq!(cli2, expected);
     }
 }
-
