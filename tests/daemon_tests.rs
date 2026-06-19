@@ -396,3 +396,53 @@ fn test_fencing_scenario_targeted() {
     run_scenario(6, &["3600nonexistentwwid"], &steps);
 }
 
+#[test]
+fn test_fencing_scenario_partial_failure() {
+    let active_luns: HashSet<String> = vec!["mpatha".to_string(), "mpathb".to_string()]
+        .into_iter()
+        .collect();
+
+    let steps = vec![
+        // Both mpatha (alive) and mpathb (dead) are in use.
+        // We should NOT trigger fencing since not all in-use LUNs are dead.
+        ScenarioStep {
+            multipath_file: "mpatha_active_mpathb_failed.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 0,
+            expected_fencing: false,
+        },
+    ];
+
+    run_scenario(/*max_failures*/ 6, &[], &steps);
+}
+
+#[test]
+fn test_fencing_scenario_only_failed_in_use() {
+    let active_luns: HashSet<String> = vec!["mpathb".to_string()].into_iter().collect();
+
+    let steps = vec![
+        // Only mpathb (dead) is in use.
+        // Fencing should trigger after 3 consecutive failures.
+        ScenarioStep {
+            multipath_file: "mpatha_active_mpathb_failed.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 1,
+            expected_fencing: false,
+        },
+        ScenarioStep {
+            multipath_file: "mpatha_active_mpathb_failed.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 2,
+            expected_fencing: false,
+        },
+        ScenarioStep {
+            multipath_file: "mpatha_active_mpathb_failed.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 3,
+            expected_fencing: true,
+        },
+    ];
+
+    run_scenario(/*max_failures*/ 3, &[], &steps);
+}
+
