@@ -310,7 +310,7 @@ impl PveSanClient {
    - Filters to only running VMs
 
 3. `get_vm_config(&self, vmid: u64) -> PveSanResult<HashMap<String, String>>` (async)
-   - **Optimization**: First attempts to read the config directly from `/etc/pve/nodes/{node}/qemu-server/{vmid}.conf`. This avoids the massive CPU overhead of spawning `pvesh` for every VM.
+   - **Optimization**: First attempts to read the config directly from `/etc/pve/local/qemu-server/{vmid}.conf`. This avoids the massive CPU overhead of spawning `pvesh` for every VM.
    - If the local file read fails (e.g., querying a remote node without local pmxcfs), falls back to using `pvesh get /nodes/{node}/qemu/{vmid}/config --output-format json`.
    - Parses the resulting config file or JSON.
 

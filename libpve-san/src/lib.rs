@@ -309,14 +309,26 @@ impl PveSanClient {
     }
 
     async fn get_vm_config(&self, vmid: u64) -> PveSanResult<HashMap<String, String>> {
-        let node = &self.config.node;
-        let local_path = format!("/etc/pve/nodes/{node}/qemu-server/{vmid}.conf");
+        let local_path = if let Ok(test_dir) = std::env::var("PVE_SAN_TEST_DATA_DIR") {
+            let path = std::path::Path::new(&test_dir)
+                .parent()
+                .map(|p| p.join("pve/local/qemu-server").join(format!("{vmid}.conf")))
+                .unwrap_or_else(|| std::path::PathBuf::from(format!("/etc/pve/local/qemu-server/{vmid}.conf")));
+            if path.exists() {
+                path.to_string_lossy().to_string()
+            } else {
+                format!("/etc/pve/local/qemu-server/{vmid}.conf")
+            }
+        } else {
+            format!("/etc/pve/local/qemu-server/{vmid}.conf")
+        };
 
         // Try reading directly from pmxcfs config file first (optimization)
         if let Ok(config_text) = std::fs::read_to_string(&local_path) {
             return self.parse_vm_config(&config_text);
         }
 
+        let node = &self.config.node;
         let path = format!("/nodes/{node}/qemu/{vmid}/config");
 
         // Use pvesh get to retrieve the VM config as a string
