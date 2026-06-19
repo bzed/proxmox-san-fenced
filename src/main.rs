@@ -76,6 +76,94 @@ struct Cli {
     sysrq_char: String,
 }
 
+fn extract_defaults_block(config: &str) -> Option<&str> {
+    let start_idx = config.find("defaults {")?;
+    let content_start = start_idx + "defaults {".len();
+    let mut brace_count = 1;
+    let mut end_idx = None;
+    for (i, c) in config[content_start..].char_indices() {
+        if c == '{' {
+            brace_count += 1;
+        } else if c == '}' {
+            brace_count -= 1;
+            if brace_count == 0 {
+                end_idx = Some(content_start + i);
+                break;
+            }
+        }
+    }
+    end_idx.map(|end| &config[content_start..end])
+}
+
+fn normalize_val(val: &str) -> &str {
+    val.trim_matches(|c| c == '"' || c == '\'')
+}
+
+fn check_multipath_config(config_str: &str) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let defaults_content = match extract_defaults_block(config_str) {
+        Some(content) => content,
+        None => {
+            warnings.push("No 'defaults' section found in multipath config".to_string());
+            return warnings;
+        }
+    };
+
+    let mut polling_interval = None;
+    let mut no_path_retry = None;
+    let mut fast_io_fail_tmo = None;
+    let mut dev_loss_tmo = None;
+
+    for line in defaults_content.lines() {
+        let line = match line.split_once('#') {
+            Some((before, _)) => before,
+            None => line,
+        };
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            let key = parts[0];
+            let val = normalize_val(parts[1]);
+            match key {
+                "polling_interval" => polling_interval = Some(val.to_string()),
+                "no_path_retry" => no_path_retry = Some(val.to_string()),
+                "fast_io_fail_tmo" => fast_io_fail_tmo = Some(val.to_string()),
+                "dev_loss_tmo" => dev_loss_tmo = Some(val.to_string()),
+                _ => {}
+            }
+        }
+    }
+
+    match polling_interval.as_deref() {
+        Some("5") => {}
+        Some(val) => warnings.push(format!("polling_interval is set to '{val}' instead of '5'")),
+        None => warnings.push("polling_interval is not configured (expected 5)".to_string()),
+    }
+
+    match no_path_retry.as_deref() {
+        Some("queue") => {}
+        Some(val) => warnings.push(format!(
+            "no_path_retry is set to '{val}' instead of 'queue'"
+        )),
+        None => warnings.push("no_path_retry is not configured (expected queue)".to_string()),
+    }
+
+    match fast_io_fail_tmo.as_deref() {
+        Some("5") => {}
+        Some(val) => warnings.push(format!("fast_io_fail_tmo is set to '{val}' instead of '5'")),
+        None => warnings.push("fast_io_fail_tmo is not configured (expected 5)".to_string()),
+    }
+
+    match dev_loss_tmo.as_deref() {
+        Some("infinity") => {}
+        Some(val) => warnings.push(format!(
+            "dev_loss_tmo is set to '{val}' instead of 'infinity'"
+        )),
+        None => warnings.push("dev_loss_tmo is not configured (expected infinity)".to_string()),
+    }
+
+    warnings
+}
+
 fn validate_sysrq(sysrq_char: &str) {
     if std::env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
         return;
@@ -130,6 +218,19 @@ async fn main() {
     }
     let node = &cli.node_name;
     info!("Starting PVE SAN fencing daemon on node: {node}");
+
+    // Validate multipathd configuration parameters on startup
+    match libmultipath::send_multipath_command_to_socket(&cli.socket, "show config") {
+        Ok(config_response) => {
+            let warnings = check_multipath_config(&config_response);
+            for warning in warnings {
+                warn!("Multipath configuration recommendation warning: {warning}");
+            }
+        }
+        Err(e) => {
+            warn!("Failed to query multipathd config to verify parameters: {e}");
+        }
+    }
 
     validate_sysrq(&cli.sysrq_char);
 
@@ -271,5 +372,54 @@ mod tests {
         assert_eq!(cli_env.poll_interval, 15);
         assert_eq!(cli_env.max_failures, 10);
         assert!(cli_env.test_mode);
+    }
+
+    #[test]
+    fn test_check_multipath_config() {
+        let valid_config = r#"
+defaults {
+    verbosity 2
+    polling_interval 5
+    no_path_retry "queue"
+    fast_io_fail_tmo 5
+    dev_loss_tmo "infinity"
+}
+"#;
+        let warnings = check_multipath_config(valid_config);
+        assert!(
+            warnings.is_empty(),
+            "Expected no warnings, got: {warnings:?}"
+        );
+
+        let invalid_config = r#"
+defaults {
+    polling_interval 10
+    no_path_retry "fail"
+    fast_io_fail_tmo 15
+    dev_loss_tmo 30
+}
+"#;
+        let warnings = check_multipath_config(invalid_config);
+        let expected = vec![
+            "polling_interval is set to '10' instead of '5'".to_string(),
+            "no_path_retry is set to 'fail' instead of 'queue'".to_string(),
+            "fast_io_fail_tmo is set to '15' instead of '5'".to_string(),
+            "dev_loss_tmo is set to '30' instead of 'infinity'".to_string(),
+        ];
+        assert_eq!(warnings, expected);
+
+        let missing_config = r#"
+defaults {
+    verbosity 2
+}
+"#;
+        let warnings = check_multipath_config(missing_config);
+        let expected = vec![
+            "polling_interval is not configured (expected 5)".to_string(),
+            "no_path_retry is not configured (expected queue)".to_string(),
+            "fast_io_fail_tmo is not configured (expected 5)".to_string(),
+            "dev_loss_tmo is not configured (expected infinity)".to_string(),
+        ];
+        assert_eq!(warnings, expected);
     }
 }
