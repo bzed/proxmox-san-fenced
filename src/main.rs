@@ -21,6 +21,12 @@ use tokio::sync::RwLock;
 
 use pve_san_fenced::{discover_in_use_mpaths, trigger_fencing, Fencer};
 
+fn get_default_node_name() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "localhost".to_string())
+}
+
 /// SAN fencing daemon for Proxmox VE
 #[derive(Parser, Debug, PartialEq)]
 #[command(name = "pve-san-fenced")]
@@ -49,8 +55,8 @@ struct Cli {
     socket: String,
 
     /// The name of the local Proxmox node
-    #[arg(long, short = 'n')]
-    node: String,
+    #[arg(long = "node-name", short = 'n', default_value_t = get_default_node_name())]
+    node_name: String,
 
     /// Command to use for Proxmox VE API queries
     #[arg(long, default_value = "pvesh")]
@@ -109,7 +115,13 @@ async fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
-    let node = &cli.node;
+    let node_dir = std::path::Path::new("/etc/pve/nodes").join(&cli.node_name);
+    if !node_dir.is_dir() {
+        let display_path = node_dir.display();
+        error!("Node directory '{display_path}' does not exist in /etc/pve/nodes");
+        std::process::exit(1);
+    }
+    let node = &cli.node_name;
     info!("Starting PVE SAN fencing daemon on node: {node}");
 
     validate_sysrq(&cli.sysrq_char);
@@ -118,7 +130,7 @@ async fn main() {
 
     // Spawn VM and storage discovery task in an independent OS thread
     let active_luns_clone = Arc::clone(&active_luns);
-    let node_clone = cli.node.clone();
+    let node_clone = cli.node_name.clone();
     let pvesh_cmd_clone = cli.pvesh_command.clone();
     let discovery_interval = cli.discovery_interval;
 
@@ -204,7 +216,7 @@ mod tests {
             max_failures: 6,
             target_wwids: vec![],
             socket: libmultipath::DEFAULT_SOCKET.to_string(),
-            node: "pve01".to_string(),
+            node_name: "pve01".to_string(),
             pvesh_command: "pvesh".to_string(),
             test_mode: true,
             sysrq_char: "c".to_string(),
@@ -221,5 +233,20 @@ mod tests {
         ];
         let cli2 = Cli::try_parse_from(args2).unwrap();
         assert_eq!(cli2, expected);
+
+        let args_default = vec!["pve-san-fenced", "-t", "--sysrq-char", "c"];
+        let cli_default = Cli::try_parse_from(args_default).unwrap();
+        let expected_default = Cli {
+            poll_interval: 5,
+            discovery_interval: 60,
+            max_failures: 6,
+            target_wwids: vec![],
+            socket: libmultipath::DEFAULT_SOCKET.to_string(),
+            node_name: get_default_node_name(),
+            pvesh_command: "pvesh".to_string(),
+            test_mode: true,
+            sysrq_char: "c".to_string(),
+        };
+        assert_eq!(cli_default, expected_default);
     }
 }

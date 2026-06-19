@@ -8,7 +8,7 @@ pve-san-fenced \- SAN fencing daemon for Proxmox VE
 [\fB\-\-max\-failures\fR \fIcount\fR]
 [\fB\-\-target\-wwids\fR \fIwwid1,wwid2,...\fR]
 [\fB\-\-socket\fR \fIpath\fR]
-\fB\-\-node\fR \fIname\fR
+[\fB\-\-node\-name\fR \fIname\fR]
 [\fB\-\-pvesh\-command\fR \fIcommand\fR]
 [\fB\-\-sysrq\-char\fR \fIchar\fR]
 [\fB\-t\fR | \fB\-\-test\-mode\fR]
@@ -32,8 +32,8 @@ Specific WWIDs to monitor. If not specified, monitors all multipath maps in use 
 .BI \-\-socket " path"
 Multipathd abstract socket path to connect to. Default is @/org/kernel/linux/storage/multipathd.
 .TP
-.BI \-n ", " \-\-node " name"
-The name of the local Proxmox VE node. This option is required.
+.BI \-n ", " \-\-node\-name " name"
+The name of the local Proxmox VE node. Default is the local hostname. Must exist as a directory in /etc/pve/nodes.
 .TP
 .BI \-\-pvesh\-command " command"
 Command or path to use for Proxmox VE API queries. Default is "pvesh".
