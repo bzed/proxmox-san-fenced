@@ -70,7 +70,7 @@ pub fn build_mpath_map(
 
         if let Some(mpath) = next_mpath {
             map.entry(dev.name.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(mpath.to_string());
         }
 
