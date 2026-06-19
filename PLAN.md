@@ -310,10 +310,9 @@ impl PveSanClient {
    - Filters to only running VMs
 
 3. `get_vm_config(&self, vmid: u64) -> PveSanResult<HashMap<String, String>>` (async)
-   - Uses pvesh get to retrieve VM config from `/nodes/{node}/qemu/{vmid}/config`
-   - Parses config in two formats:
-     - First tries JSON format
-     - Falls back to key: value format (Proxmox traditional format)
+   - **Optimization**: First attempts to read the config directly from `/etc/pve/nodes/{node}/qemu-server/{vmid}.conf`. This avoids the massive CPU overhead of spawning `pvesh` for every VM.
+   - If the local file read fails (e.g., querying a remote node without local pmxcfs), falls back to using `pvesh get /nodes/{node}/qemu/{vmid}/config --output-format json`.
+   - Parses the resulting config file or JSON.
 
 4. `parse_vm_config(&self, config_text: &str) -> PveSanResult<HashMap<String, String>>`
    - Handles both JSON and key:value config formats
@@ -773,6 +772,7 @@ test-data/
 - `--socket` (default: `DEFAULT_SOCKET` from libmultipath): Multipath socket to connect to.
 - `--node` (required): The name of the Proxmox node to query for VM data.
 - `--test-mode` / `-t` (optional, flag): Runs in test mode (only logs changes and decisions, does not trigger reboot/fencing).
+- `--sysrq-char` (default: `b`): The character to write to `/proc/sysrq-trigger`. `b` reboots immediately (recommended for fast HA fencing), while `c` causes a kernel panic (useful for debugging, but delays reboot if kdump is active).
 
 **Data Structures**:
 
@@ -799,8 +799,12 @@ struct PathGroup {
 
 To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon is structured into two independent concurrent asynchronous tasks. Data is shared using a thread-safe structure like `Arc<RwLock<HashSet<String>>>` containing the active WWIDs/dm-names.
 
+0. **Startup Validation**:
+   - Verify that `/proc/sys/kernel/sysrq` contains a value that permits the configured sysrq trigger (e.g., > 0). If sysrq is disabled, log a critical warning that fencing will fail.
+
 1. **Discovery Task (VM & Storage Mapping)**:
    - Construct an async loop that executes every `DISCOVERY_INTERVAL` seconds.
+   - **Timeout Protection**: Wrap the entire discovery execution (`get_san_storage_info` and `lsblk`) in a `tokio::time::timeout` (e.g., 30 seconds). If SAN fails, block IO can cause these commands to hang in an uninterruptible sleep (D-state). If a timeout occurs, retain the previous `HashSet` of active LUNs.
    - Uses `libpve-san` (`get_san_storage_info`) to read the configs of all running VMs and discover their storage endpoints.
    - Uses `lsblk` (via `libpve-san`) to discover underlying block devices and device mapper layers.
    - Finds the multipath device mapper device (`dm_name` / `WWID`) associated with the storage if it is in use by a running VM.
@@ -820,7 +824,8 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
      - Initialize an `all_paths_dead = true` flag.
      - **Filtering**: Only evaluate maps that are present in the active LUNs `HashSet` (or explicitly provided via `--target-wwids`). Ignore failures for LUNs not actively used by any running VM.
      - For each actively used map, iterate through its `path_groups`.
-     - If **any** path group reports a `state` other than `"offline"` or `"failed"` (e.g., `"active"`, `"enabled"`), set `all_paths_dead = false` and break the loop for that map.
+     - Within each path group, also evaluate the `paths` array. A path group is only considered truly alive if it contains at least one path with a state that is not `"failed"`, `"faulty"`, or `"ghost"`.
+     - If **any** path group is alive and reports a `state` other than `"offline"` or `"failed"` (e.g., `"active"`, `"enabled"`), set `all_paths_dead = false` and break the loop for that map.
      - Track map states (dead vs. alive) across monitoring cycles. If a monitored map's state transitions, log this change at `info` level.
      - Debug log all states (fencer consecutive failures, active set, fencer cycle status, path states) and raw configs returned by `multipathd` at `debug` level.
    - **Threshold Evaluation**:
@@ -840,10 +845,10 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
             2. Log critical: `"SAN FENCER: Initiating filesystem sync..."`
             3. Sync filesystems to flush any memory buffers for local storage (OS disk) using `unsafe { libc::sync() }`.
             4. Wait 2 seconds using `tokio::time::sleep(std::time::Duration::from_secs(2)).await`.
-            5. Log critical: `"SAN FENCER: Triggering SysRq Kernel Panic NOW."`
-            6. Trigger Kernel Panic:
-               - Attempt to write `"c"` to `/proc/sysrq-trigger` using `tokio::fs::write`.
-               - If that fails, log the error and write `"b"` (reboot) to `/proc/sysrq-trigger` as a fallback.
+            5. Log critical: `"SAN FENCER: Triggering SysRq Fencing NOW."`
+            6. Trigger Fencing:
+               - Attempt to write the configured `--sysrq-char` (default `"b"`) to `/proc/sysrq-trigger` using `tokio::fs::write`.
+               - If it fails, log the error and aggressively attempt to write `"b"` as a fallback to ensure the node reboots.
 
 **Testing**:
 - Use `mpath-mockd` as a test double to simulate multipathd responses.

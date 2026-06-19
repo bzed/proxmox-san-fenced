@@ -61,6 +61,45 @@ struct Cli {
     /// Run in test mode (only logs changes and decisions, does not trigger reboot)
     #[arg(long, short = 't')]
     test_mode: bool,
+
+    /// The character to write to /proc/sysrq-trigger (default: b for immediate reboot, c for panic)
+    #[arg(long, default_value = "b")]
+    sysrq_char: String,
+}
+
+fn validate_sysrq(sysrq_char: &str) {
+    if std::env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
+        return;
+    }
+
+    let sysrq_path = "/proc/sys/kernel/sysrq";
+    match std::fs::read_to_string(sysrq_path) {
+        Ok(content) => {
+            let val_str = content.trim();
+            match val_str.parse::<i32>() {
+                Ok(val) => {
+                    if val == 0 {
+                        warn!("CRITICAL: SysRq is disabled (value is 0) in {sysrq_path}. Fencing operations will fail!");
+                    } else {
+                        let allowed = match sysrq_char {
+                            "b" => val == 1 || (val & 128) != 0,
+                            "c" => val == 1 || (val & 2) != 0,
+                            _ => val == 1,
+                        };
+                        if !allowed {
+                            warn!("CRITICAL: Configured SysRq char '{sysrq_char}' might be disabled by {sysrq_path} bitmask ({val_str})!");
+                        }
+                    }
+                }
+                Err(_) => {
+                    warn!("Could not parse {sysrq_path} value: {val_str}");
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Failed to read {sysrq_path}: {e}. Unable to verify SysRq state.");
+        }
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -73,6 +112,8 @@ async fn main() {
 
     let cli = Cli::parse();
     info!("Starting PVE SAN fencing daemon on node: {}", cli.node);
+
+    validate_sysrq(&cli.sysrq_char);
 
     let active_luns = Arc::new(RwLock::new(HashSet::new()));
 
@@ -139,7 +180,7 @@ async fn main() {
             if test_mode {
                 info!("TEST MODE: Fencing decision reached, but not executing reboot/SysRq kernel panic.");
             } else {
-                trigger_fencing().await;
+                trigger_fencing(&cli.sysrq_char).await;
             }
         }
     }
@@ -163,6 +204,11 @@ mod tests {
         let args3 = vec!["pve-san-fenced", "-n", "pve01"];
         let cli3 = Cli::try_parse_from(args3).unwrap();
         assert!(!cli3.test_mode);
+        assert_eq!(cli3.sysrq_char, "b");
+
+        let args4 = vec!["pve-san-fenced", "-n", "pve01", "--sysrq-char", "c"];
+        let cli4 = Cli::try_parse_from(args4).unwrap();
+        assert_eq!(cli4.sysrq_char, "c");
     }
 }
 

@@ -45,6 +45,8 @@ pub struct MultipathMap {
 
 #[derive(Deserialize, Debug, Clone)]
 struct PathGroup {
+    #[serde(rename = "dm_st")]
+    dm_st: Option<String>,
     paths: Option<Vec<MpathPath>>,
 }
 
@@ -95,80 +97,100 @@ pub async fn discover_in_use_mpaths(
     node: &str,
     pvesh_command: &str,
 ) -> Result<HashSet<String>, Box<dyn std::error::Error + Send + Sync>> {
-    // 1. Get VM and storage info using libpve-san
-    let client = libpve_san::PveSanClient::with_node_and_pvesh(
-        node,
-        pvesh_command,
-    )?;
-    let storage_info = client.get_san_storage_info().await?;
-    debug!("Discovered storage info: {:?}", storage_info);
+    let fut = async {
+        // 1. Get VM and storage info using libpve-san
+        let client = libpve_san::PveSanClient::with_node_and_pvesh(
+            node,
+            pvesh_command,
+        )?;
+        let storage_info = client.get_san_storage_info().await?;
+        debug!("Discovered storage info: {:?}", storage_info);
 
-    // 2. Fetch lsblk tree (either mock data or command execution)
-    let lsblk_json = if let Ok(test_data_dir) = env::var("PVE_SAN_TEST_DATA_DIR") {
-        let path = Path::new(&test_data_dir).join("lsblk.json");
-        tokio::fs::read_to_string(path).await?
-    } else {
-        let output = tokio::process::Command::new("lsblk")
-            .args(["-o", "NAME,TYPE", "-J"])
-            .output()
-            .await?;
-        if !output.status.success() {
-            return Err(format!("lsblk command failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+        // 2. Fetch lsblk tree (either mock data or command execution)
+        let lsblk_json = if let Ok(test_data_dir) = env::var("PVE_SAN_TEST_DATA_DIR") {
+            let path = Path::new(&test_data_dir).join("lsblk.json");
+            tokio::fs::read_to_string(path).await?
+        } else {
+            let output = tokio::process::Command::new("lsblk")
+                .args(["-o", "NAME,TYPE", "-J"])
+                .output()
+                .await?;
+            if !output.status.success() {
+                return Err(format!("lsblk command failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+            }
+            String::from_utf8(output.stdout)?
+        };
+
+        let lsblk_output: LsblkOutput = serde_json::from_str(&lsblk_json)?;
+        let mut mpath_map = HashMap::new();
+        if let Some(devices) = lsblk_output.blockdevices {
+            build_mpath_map(&devices, /*current_mpath*/ None, &mut mpath_map);
         }
-        String::from_utf8(output.stdout)?
-    };
+        debug!("Built multipath-to-disk map: {:?}", mpath_map);
 
-    let lsblk_output: LsblkOutput = serde_json::from_str(&lsblk_json)?;
-    let mut mpath_map = HashMap::new();
-    if let Some(devices) = lsblk_output.blockdevices {
-        build_mpath_map(&devices, /*current_mpath*/ None, &mut mpath_map);
-    }
-    debug!("Built multipath-to-disk map: {:?}", mpath_map);
-
-    // 3. Map running VM disks to their parent multipath devices
-    let mut active_mpaths = HashSet::new();
-    for vm in storage_info.vms {
-        if vm.status == "running" {
-            for disk in vm.disks {
-                let dm_name = storage_to_dm_name(&disk.storage);
-                if let Some(mpaths) = mpath_map.get(&dm_name) {
-                    for mpath in mpaths {
-                        active_mpaths.insert(mpath.clone());
-                    }
-                } else if let Some(mpaths) = mpath_map.get(&disk.storage) {
-                    for mpath in mpaths {
-                        active_mpaths.insert(mpath.clone());
-                    }
-                } else if let Some(dm_name_only) = dm_name.strip_prefix("/dev/mapper/") {
-                    if let Some(mpaths) = mpath_map.get(dm_name_only) {
+        // 3. Map running VM disks to their parent multipath devices
+        let mut active_mpaths = HashSet::new();
+        for vm in storage_info.vms {
+            if vm.status == "running" {
+                for disk in vm.disks {
+                    let dm_name = storage_to_dm_name(&disk.storage);
+                    if let Some(mpaths) = mpath_map.get(&dm_name) {
                         for mpath in mpaths {
                             active_mpaths.insert(mpath.clone());
+                        }
+                    } else if let Some(mpaths) = mpath_map.get(&disk.storage) {
+                        for mpath in mpaths {
+                            active_mpaths.insert(mpath.clone());
+                        }
+                    } else if let Some(dm_name_only) = dm_name.strip_prefix("/dev/mapper/") {
+                        if let Some(mpaths) = mpath_map.get(dm_name_only) {
+                            for mpath in mpaths {
+                                active_mpaths.insert(mpath.clone());
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    debug!("Final active multipath set: {:?}", active_mpaths);
-    Ok(active_mpaths)
+        debug!("Final active multipath set: {:?}", active_mpaths);
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(active_mpaths)
+    };
+
+    match tokio::time::timeout(Duration::from_secs(/*secs*/ 30), fut).await {
+        Ok(res) => res,
+        Err(_) => Err("Discovery task timed out (30s limit exceeded)".into()),
+    }
 }
 
 /// Evaluates if a multipath map has lost all paths
 pub fn is_map_dead(map: &MultipathMap) -> bool {
     if let Some(pgs) = &map.path_groups {
         for pg in pgs {
+            let pg_alive = match &pg.dm_st {
+                Some(st) => st != "offline" && st != "failed",
+                None => true,
+            };
+            if !pg_alive {
+                continue;
+            }
+
             if let Some(paths) = &pg.paths {
+                let mut active_path_found = false;
                 for path in paths {
                     if let Some(dm_st) = &path.dm_st {
-                        if dm_st != "failed" && dm_st != "faulty" {
-                            // Found an active/enabled path
-                            return false;
+                        if dm_st != "failed" && dm_st != "faulty" && dm_st != "ghost" {
+                            active_path_found = true;
+                            break;
                         }
                     } else {
                         // If dm_st is missing, assume it might be alive to prevent false reboots
-                        return false;
+                        active_path_found = true;
+                        break;
                     }
+                }
+                if active_path_found {
+                    return false;
                 }
             }
         }
@@ -179,7 +201,7 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
 }
 
 /// Executes the fencing sequence
-pub async fn trigger_fencing() {
+pub async fn trigger_fencing(sysrq_char: &str) {
     warn!("SAN FENCER: Total persistent storage loss detected. Threshold met.");
     warn!("SAN FENCER: Initiating filesystem sync...");
 
@@ -194,14 +216,16 @@ pub async fn trigger_fencing() {
         std::process::exit(/*code*/ 0);
     }
 
-    warn!("SAN FENCER: Triggering SysRq Kernel Panic NOW.");
+    warn!("SAN FENCER: Triggering SysRq Fencing NOW.");
 
-    // Attempt kernel panic
-    if let Err(e) = tokio::fs::write("/proc/sysrq-trigger", "c").await {
-        error!("Failed to write 'c' to sysrq-trigger: {e}");
-        // Fallback to reboot
-        if let Err(err) = tokio::fs::write("/proc/sysrq-trigger", "b").await {
-            error!("Failed to write 'b' to sysrq-trigger: {err}");
+    // Attempt fencing with configured sysrq character
+    if let Err(e) = tokio::fs::write("/proc/sysrq-trigger", sysrq_char).await {
+        error!("Failed to write '{sysrq_char}' to sysrq-trigger: {e}");
+        // Fallback to reboot if the primary character wasn't already 'b'
+        if sysrq_char != "b" {
+            if let Err(err) = tokio::fs::write("/proc/sysrq-trigger", "b").await {
+                error!("Failed to write 'b' to sysrq-trigger: {err}");
+            }
         }
     }
 }
@@ -430,6 +454,7 @@ mod tests {
             uuid: "36001405a415ff6800000000000000000".to_string(),
             path_groups: Some(vec![
                 PathGroup {
+                    dm_st: Some("active".to_string()),
                     paths: Some(vec![
                         MpathPath {
                             dm_st: Some("active".to_string()),
@@ -449,6 +474,7 @@ mod tests {
             uuid: "36001".to_string(),
             path_groups: Some(vec![
                 PathGroup {
+                    dm_st: None,
                     paths: Some(vec![
                         MpathPath {
                             dm_st: None,
@@ -468,6 +494,7 @@ mod tests {
             uuid: "368a".to_string(),
             path_groups: Some(vec![
                 PathGroup {
+                    dm_st: Some("active".to_string()),
                     paths: Some(vec![
                         MpathPath {
                             dm_st: Some("failed".to_string()),
@@ -487,6 +514,7 @@ mod tests {
             uuid: "368b".to_string(),
             path_groups: Some(vec![
                 PathGroup {
+                    dm_st: Some("active".to_string()),
                     paths: Some(Vec::new()),
                 },
             ]),
@@ -500,6 +528,40 @@ mod tests {
             path_groups: None,
         };
         assert!(is_map_dead(&no_pg_map));
+
+        // 4. Map with ghost paths only
+        let ghost_map = MultipathMap {
+            name: "mpatha".to_string(),
+            uuid: "368d".to_string(),
+            path_groups: Some(vec![
+                PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![
+                        MpathPath {
+                            dm_st: Some("ghost".to_string()),
+                        },
+                    ]),
+                },
+            ]),
+        };
+        assert!(is_map_dead(&ghost_map));
+
+        // 5. Map with inactive path group (dm_st is offline)
+        let inactive_pg_map = MultipathMap {
+            name: "mpatha".to_string(),
+            uuid: "368e".to_string(),
+            path_groups: Some(vec![
+                PathGroup {
+                    dm_st: Some("offline".to_string()),
+                    paths: Some(vec![
+                        MpathPath {
+                            dm_st: Some("active".to_string()),
+                        },
+                    ]),
+                },
+            ]),
+        };
+        assert!(is_map_dead(&inactive_pg_map));
     }
 
     #[tokio::test]
