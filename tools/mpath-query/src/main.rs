@@ -86,6 +86,7 @@ fn main() {
     };
 
     if cli.verbose {
+        eprintln!("Connecting to socket: {}", cli.socket);
         eprintln!("Sending command: {}", command);
     }
 

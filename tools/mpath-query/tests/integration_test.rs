@@ -39,6 +39,11 @@ fn mockd_path() -> PathBuf {
     workspace_root().join("target/debug/mpath-mockd")
 }
 
+/// Get the path to the mpath-query binary
+fn query_path() -> PathBuf {
+    workspace_root().join("target/debug/mpath-query")
+}
+
 /// Get the path to the test data directory
 fn test_data_dir() -> PathBuf {
     workspace_root().join("test-data/multipathd")
@@ -70,7 +75,7 @@ fn wait_for_daemon(daemon: &mut Child, socket_path: &str, timeout: Duration) -> 
         }
 
         // Try to connect using mpath-query
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(socket_path)
             .arg("-c")
@@ -102,7 +107,7 @@ fn test_default_command_to_stdout() {
         panic!("Mock daemon did not start in time");
     }
 
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&socket_path)
         .arg("-c")
@@ -134,7 +139,7 @@ fn test_output_to_file() {
     }
 
     let output_path = "/tmp/test_mpath_query_output.json";
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&socket_path)
         .arg("-c")
@@ -168,7 +173,7 @@ fn test_custom_command() {
         panic!("Mock daemon did not start in time");
     }
 
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&socket_path)
         .arg("-c")
@@ -197,7 +202,7 @@ fn test_subcommand() {
         panic!("Mock daemon did not start in time");
     }
 
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&socket_path)
         .arg("show-maps-json")
@@ -225,7 +230,7 @@ fn test_list_maps_command() {
         panic!("Mock daemon did not start in time");
     }
 
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&socket_path)
         .arg("-c")
@@ -254,7 +259,7 @@ fn test_verbose_mode() {
         panic!("Mock daemon did not start in time");
     }
 
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&socket_path)
         .arg("-v")

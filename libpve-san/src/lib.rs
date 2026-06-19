@@ -170,7 +170,6 @@ pub struct PveSanConfig {
     node: String,
 
     /// The pvesh command to use (default: "pvesh")
-    #[cfg_attr(not(test), allow(dead_code))]
     pvesh_command: String,
 }
 
@@ -185,19 +184,22 @@ impl PveSanConfig {
     /// # Returns
     ///
     /// Returns the configuration if valid, or an error if the node name is empty.
-    pub fn new(node: String, pvesh_command: Option<String>) -> PveSanResult<Self> {
+    pub fn new(node: impl Into<String>, pvesh_command: Option<&str>) -> PveSanResult<Self> {
+        let node = node.into();
         if node.is_empty() {
             return Err(PveSanError::NoNodeError);
         }
 
         Ok(Self {
             node,
-            pvesh_command: pvesh_command.unwrap_or_else(|| "pvesh".to_string()),
+            pvesh_command: pvesh_command
+                .map(String::from)
+                .unwrap_or_else(|| "pvesh".to_string()),
         })
     }
 
     /// Creates a new PveSanConfig with the given node name and default pvesh command.
-    pub fn with_node(node: String) -> PveSanResult<Self> {
+    pub fn with_node(node: impl Into<String>) -> PveSanResult<Self> {
         Self::new(node, None)
     }
 
@@ -209,15 +211,6 @@ impl PveSanConfig {
     /// Returns the pvesh command.
     pub fn pvesh_command(&self) -> &str {
         &self.pvesh_command
-    }
-}
-
-impl Default for PveSanConfig {
-    fn default() -> Self {
-        Self {
-            node: String::new(),
-            pvesh_command: "pvesh".to_string(),
-        }
     }
 }
 
@@ -235,20 +228,19 @@ impl PveSanClient {
     ///
     /// # Returns
     ///
-    /// Returns the client if the configuration is valid.
-    pub fn new(config: PveSanConfig) -> PveSanResult<Self> {
-        // Validation is already done in PveSanConfig::new()
-        Ok(Self { config })
+    /// Returns the client.
+    pub fn new(config: PveSanConfig) -> Self {
+        Self { config }
     }
 
     /// Creates a new PveSanClient with the given node name and default pvesh command.
-    pub fn with_node(node: String) -> PveSanResult<Self> {
+    pub fn with_node(node: impl Into<String>) -> PveSanResult<Self> {
         let config = PveSanConfig::with_node(node)?;
         Ok(Self { config })
     }
 
     /// Creates a new PveSanClient with the given node name and custom pvesh command.
-    pub fn with_node_and_pvesh(node: String, pvesh_command: String) -> PveSanResult<Self> {
+    pub fn with_node_and_pvesh(node: impl Into<String>, pvesh_command: &str) -> PveSanResult<Self> {
         let config = PveSanConfig::new(node, Some(pvesh_command))?;
         Ok(Self { config })
     }
@@ -382,7 +374,7 @@ impl PveSanClient {
                             storage,
                             device_path: None,
                             device_mapper_name: None,
-                            size_bytes: metadata.get("size").and_then(|s| parse_size(s)),
+                            size_bytes: metadata.get("size").and_then(|s| Self::parse_size(s)),
                             metadata: Some(metadata),
                         });
                     }
@@ -449,11 +441,13 @@ impl PveSanClient {
             None
         };
 
+        let size = device.capacity().ok().flatten().map(|c| c * 512).unwrap_or(0);
+
         BlockDeviceInfo {
             name,
             path,
             device_type,
-            size: 0, // Size information not available from lsblk crate
+            size,
             dm_name,
             parent: None,
             children: Vec::new(),
@@ -498,54 +492,58 @@ impl PveSanClient {
             .map_err(|e| PveSanError::PveshError(format!("Invalid UTF-8 output: {}", e)))
     }
 
-    pub fn config(&self) -> &PveSanConfig {
-        &self.config
+    fn parse_size(size_str: &str) -> Option<u64> {
+        let size_str = size_str.trim().to_uppercase();
+
+        // Try to parse the number part, handling both integer and decimal values
+        // Returns the numeric value in bytes
+        fn parse_and_convert(num_str: &str, multiplier: u64) -> Option<u64> {
+            // Try integer parse first
+            if let Ok(n) = num_str.parse::<u64>() {
+                return Some(n * multiplier);
+            }
+            // Try decimal parse
+            if let Ok(n) = num_str.parse::<f64>() {
+                // Convert to u64, truncating any fractional part
+                return Some((n * multiplier as f64) as u64);
+            }
+            None
+        }
+
+        if size_str.ends_with("K") || size_str.ends_with("KB") {
+            let num = size_str.trim_end_matches(['K', 'B']);
+            parse_and_convert(num, 1024)
+        } else if size_str.ends_with("M") || size_str.ends_with("MB") {
+            let num = size_str.trim_end_matches(['M', 'B']);
+            parse_and_convert(num, 1024 * 1024)
+        } else if size_str.ends_with("G") || size_str.ends_with("GB") {
+            let num = size_str.trim_end_matches(['G', 'B']);
+            parse_and_convert(num, 1024 * 1024 * 1024)
+        } else if size_str.ends_with("T") || size_str.ends_with("TB") {
+            let num = size_str.trim_end_matches(['T', 'B']);
+            parse_and_convert(num, 1024 * 1024 * 1024 * 1024)
+        } else {
+            // Try to parse as plain number (bytes)
+            size_str.parse::<u64>().ok()
+                .or_else(|| size_str.parse::<f64>().ok().map(|n| n as u64))
+        }
     }
 }
 
-fn parse_size(size_str: &str) -> Option<u64> {
-    let size_str = size_str.trim().to_uppercase();
-
-    // Try to parse the number part, handling both integer and decimal values
-    // Returns the numeric value in bytes
-    fn parse_and_convert(num_str: &str, multiplier: u64) -> Option<u64> {
-        // Try integer parse first
-        if let Ok(n) = num_str.parse::<u64>() {
-            return Some(n * multiplier);
-        }
-        // Try decimal parse
-        if let Ok(n) = num_str.parse::<f64>() {
-            // Convert to u64, truncating any fractional part
-            return Some((n * multiplier as f64) as u64);
-        }
-        None
-    }
-
-    if size_str.ends_with("K") || size_str.ends_with("KB") {
-        let num = size_str.trim_end_matches(|c| matches!(c, 'K' | 'B'));
-        parse_and_convert(num, 1024)
-    } else if size_str.ends_with("M") || size_str.ends_with("MB") {
-        let num = size_str.trim_end_matches(|c| matches!(c, 'M' | 'B'));
-        parse_and_convert(num, 1024 * 1024)
-    } else if size_str.ends_with("G") || size_str.ends_with("GB") {
-        let num = size_str.trim_end_matches(|c| matches!(c, 'G' | 'B'));
-        parse_and_convert(num, 1024 * 1024 * 1024)
-    } else if size_str.ends_with("T") || size_str.ends_with("TB") {
-        let num = size_str.trim_end_matches(|c| matches!(c, 'T' | 'B'));
-        parse_and_convert(num, 1024 * 1024 * 1024 * 1024)
-    } else {
-        // Try to parse as plain number (bytes)
-        size_str.parse::<u64>().ok()
-            .or_else(|| size_str.parse::<f64>().ok().map(|n| n as u64))
-    }
-}
-
+/// Retrieves SAN storage information asynchronously for the specified node using the default pvesh command.
+///
+/// # Arguments
+///
+/// * `node` - The node name to query
+///
+/// # Returns
+///
+/// Returns the SAN storage information on success.
 pub async fn get_san_storage_info(
     node: &str,
 ) -> PveSanResult<SanStorageInfo> {
-    let config = PveSanConfig::with_node(node.to_string())?;
-
-    let client = PveSanClient::new(config)?;
+    let config = PveSanConfig::with_node(node)?;
+    let client = PveSanClient::new(config);
     client.get_san_storage_info().await
 }
 
@@ -555,21 +553,26 @@ pub async fn get_san_storage_info_with_pvesh(
     node: &str,
     pvesh_command: &str,
 ) -> PveSanResult<SanStorageInfo> {
-    let config = PveSanConfig::new(node.to_string(), Some(pvesh_command.to_string()))?;
-
-    let client = PveSanClient::new(config)?;
+    let config = PveSanConfig::new(node, Some(pvesh_command))?;
+    let client = PveSanClient::new(config);
     client.get_san_storage_info().await
 }
 
 pub fn get_san_storage_info_sync(
     node: &str,
 ) -> PveSanResult<SanStorageInfo> {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .map_err(|e| PveSanError::RuntimeError(e.to_string()))?;
-    rt.block_on(async {
-        get_san_storage_info(node).await
-    })
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.block_on(async {
+            get_san_storage_info(node).await
+        })
+    } else {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .map_err(|e| PveSanError::RuntimeError(e.to_string()))?;
+        rt.block_on(async {
+            get_san_storage_info(node).await
+        })
+    }
 }
 
 /// Get SAN storage info synchronously with a custom pvesh command (for testing)
@@ -578,12 +581,18 @@ pub fn get_san_storage_info_sync_with_pvesh(
     node: &str,
     pvesh_command: &str,
 ) -> PveSanResult<SanStorageInfo> {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .map_err(|e| PveSanError::RuntimeError(e.to_string()))?;
-    rt.block_on(async {
-        get_san_storage_info_with_pvesh(node, pvesh_command).await
-    })
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.block_on(async {
+            get_san_storage_info_with_pvesh(node, pvesh_command).await
+        })
+    } else {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .map_err(|e| PveSanError::RuntimeError(e.to_string()))?;
+        rt.block_on(async {
+            get_san_storage_info_with_pvesh(node, pvesh_command).await
+        })
+    }
 }
 
 #[cfg(test)]
@@ -592,26 +601,26 @@ mod tests {
 
     #[test]
     fn test_parse_size() {
-        assert_eq!(parse_size("10G"), Some(10 * 1024 * 1024 * 1024));
-        assert_eq!(parse_size("10GB"), Some(10 * 1024 * 1024 * 1024));
-        assert_eq!(parse_size("1T"), Some(1024u64.pow(4)));
-        assert_eq!(parse_size("100M"), Some(100 * 1024 * 1024));
-        assert_eq!(parse_size("1024K"), Some(1024 * 1024));
-        assert_eq!(parse_size("1048576"), Some(1048576));
-        assert_eq!(parse_size("invalid"), None);
+        assert_eq!(PveSanClient::parse_size("10G"), Some(10 * 1024 * 1024 * 1024));
+        assert_eq!(PveSanClient::parse_size("10GB"), Some(10 * 1024 * 1024 * 1024));
+        assert_eq!(PveSanClient::parse_size("1T"), Some(1024u64.pow(4)));
+        assert_eq!(PveSanClient::parse_size("100M"), Some(100 * 1024 * 1024));
+        assert_eq!(PveSanClient::parse_size("1024K"), Some(1024 * 1024));
+        assert_eq!(PveSanClient::parse_size("1048576"), Some(1048576));
+        assert_eq!(PveSanClient::parse_size("invalid"), None);
     }
 
     #[test]
     fn test_config_requires_node() {
         // With private fields, config creation fails for empty node
-        let config_result = PveSanConfig::with_node(String::new());
+        let config_result = PveSanConfig::with_node("");
         assert!(matches!(config_result, Err(PveSanError::NoNodeError)));
     }
 
     #[test]
     fn test_parse_vm_config() {
-        let config = PveSanConfig::with_node("test".to_string()).unwrap();
-        let client = PveSanClient::new(config).unwrap();
+        let config = PveSanConfig::with_node("test").unwrap();
+        let client = PveSanClient::new(config);
         let config_text = "name: test-vm\nscsi0: local-lvm:vm-100-disk-0,size=10G\nstatus: running";
         let result = client.parse_vm_config(config_text);
         assert!(result.is_ok());
@@ -623,8 +632,8 @@ mod tests {
 
     #[test]
     fn test_parse_vm_config_json() {
-        let config = PveSanConfig::with_node("test".to_string()).unwrap();
-        let client = PveSanClient::new(config).unwrap();
+        let config = PveSanConfig::with_node("test").unwrap();
+        let client = PveSanClient::new(config);
         let config_text = r#"{"name": "test-vm", "scsi0": "local-lvm:vm-100-disk-0,size=10G", "status": "running"}"#;
         let result = client.parse_vm_config(config_text);
         assert!(result.is_ok());
@@ -636,8 +645,8 @@ mod tests {
 
     #[test]
     fn test_parse_disk_value() {
-        let config = PveSanConfig::with_node("test".to_string()).unwrap();
-        let client = PveSanClient::new(config).unwrap();
+        let config = PveSanConfig::with_node("test").unwrap();
+        let client = PveSanClient::new(config);
 
         // Test with storage and size
         let (storage, metadata) = client.parse_disk_value("local-lvm:vm-100-disk-0,size=10G").unwrap();
@@ -658,8 +667,8 @@ mod tests {
 
     #[test]
     fn test_extract_disks() {
-        let config = PveSanConfig::with_node("test".to_string()).unwrap();
-        let client = PveSanClient::new(config).unwrap();
+        let config = PveSanConfig::with_node("test").unwrap();
+        let client = PveSanClient::new(config);
 
         let mut config_map = HashMap::new();
         config_map.insert("name".to_string(), "test-vm".to_string());

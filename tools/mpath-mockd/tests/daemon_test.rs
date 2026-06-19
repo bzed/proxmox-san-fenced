@@ -36,6 +36,11 @@ fn daemon_path() -> PathBuf {
     workspace_root().join("target/debug/mpath-mockd")
 }
 
+/// Get the path to the mpath-query binary
+fn query_path() -> PathBuf {
+    workspace_root().join("target/debug/mpath-query")
+}
+
 /// Get the path to the test data directory
 fn test_data_dir() -> PathBuf {
     workspace_root().join("test-data/multipathd")
@@ -67,7 +72,7 @@ fn wait_for_daemon(daemon: &mut Child, socket_path: &str, timeout: Duration) -> 
         }
 
         // Try to connect using mpath-query
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(socket_path)
             .arg("-c")
@@ -110,7 +115,7 @@ fn test_daemon_responds_to_command() {
     }
 
     // Use mpath-query to test the daemon
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&socket_path)
         .arg("-c")
@@ -141,7 +146,7 @@ fn test_daemon_handles_unknown_command() {
     }
 
     // Use mpath-query to test with unknown command
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&socket_path)
         .arg("-c")
@@ -174,7 +179,7 @@ fn test_daemon_handles_multiple_commands() {
     // Test multiple commands
     let commands = ["show maps json", "show status", "list maps"];
     for cmd in commands.iter() {
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(&socket_path)
             .arg("-c")
@@ -213,7 +218,7 @@ fn test_daemon_custom_socket() {
         }
 
         // Try to connect using mpath-query
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(&custom_socket)
             .arg("-c")
@@ -264,7 +269,7 @@ fn test_daemon_default_file_for_show_maps_json() {
             panic!("Daemon exited");
         }
 
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(&custom_socket)
             .arg("-c")
@@ -288,7 +293,7 @@ fn test_daemon_default_file_for_show_maps_json() {
     assert!(ready, "Daemon should be ready");
 
     // Query for show maps json - should return all_active_running.json
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&custom_socket)
         .arg("-c")
@@ -333,7 +338,7 @@ fn test_daemon_custom_file_mapping() {
             panic!("Daemon exited");
         }
 
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(&custom_socket)
             .arg("-c")
@@ -357,7 +362,7 @@ fn test_daemon_custom_file_mapping() {
     assert!(ready, "Daemon with custom file mapping should be ready");
 
     // Query for show maps json - should return failed_all_timeout.json
-    let result = Command::new("../../target/release/mpath-query")
+    let result = Command::new(query_path())
         .arg("--socket")
         .arg(&custom_socket)
         .arg("-c")
@@ -398,7 +403,7 @@ fn test_daemon_all_commands() {
     ];
 
     for (command, expected_contents) in test_cases {
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(&socket_path)
             .arg("-c")
@@ -446,7 +451,7 @@ fn test_daemon_cycles_through_files() {
             panic!("Daemon exited");
         }
 
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(&custom_socket)
             .arg("-c")
@@ -471,7 +476,7 @@ fn test_daemon_cycles_through_files() {
 
     // Make multiple queries and verify they cycle through the files
     let results: Vec<String> = (0..4).map(|_| {
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(&custom_socket)
             .arg("-c")
@@ -509,7 +514,7 @@ fn test_daemon_auto_loads_multiple_files() {
 
     // Make multiple queries to show maps json
     let results: Vec<String> = (0..4).map(|_| {
-        let result = Command::new("../../target/release/mpath-query")
+        let result = Command::new(query_path())
             .arg("--socket")
             .arg(&socket_path)
             .arg("-c")

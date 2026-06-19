@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 libmultipath = { path = "../../libmultipath" }
-clap = { version = "4.0", features = ["derive"] }
+clap = { workspace = true }

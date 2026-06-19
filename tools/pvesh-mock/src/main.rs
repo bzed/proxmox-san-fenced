@@ -105,9 +105,9 @@ fn main() {
             // List VMs for a node
             handle_ls_nodes_qemu(node, &test_data_dir)
         }
-        (CommandType::Get, ["nodes", node, "qemu", vmid, "config"]) => {
+        (CommandType::Get, ["nodes", _node, "qemu", vmid, "config"]) => {
             // Get VM config
-            handle_get_vm_config(node, vmid, &test_data_dir)
+            handle_get_vm_config(vmid, &test_data_dir)
         }
         _ => {
             eprintln!("Error: Unsupported path for command: {:?}/{:?} ({:?})",
@@ -175,7 +175,7 @@ fn handle_ls_nodes_qemu(node: &str, test_data_dir: &std::path::Path) -> Option<S
     None
 }
 
-fn handle_get_vm_config(_node: &str, vmid: &str, test_data_dir: &std::path::Path) -> Option<String> {
+fn handle_get_vm_config(vmid: &str, test_data_dir: &std::path::Path) -> Option<String> {
     // Look for test data file in config subdirectory
     let filename = format!("{}.json", vmid);
     let filepath = test_data_dir

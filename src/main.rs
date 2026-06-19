@@ -20,7 +20,7 @@ use log::{debug, error, info, warn};
 use tokio::sync::RwLock;
 
 use pve_san_fenced::{
-    discover_in_use_mpaths, trigger_fencing, Fencer, MultipathOutput,
+    discover_in_use_mpaths, trigger_fencing, Fencer,
 };
 
 /// SAN fencing daemon for Proxmox VE
@@ -120,7 +120,7 @@ async fn main() {
     loop {
         interval.tick().await;
 
-        debug!("Fencer monitoring state: consecutive_failures={}, max_failures={}", fencer.consecutive_failures, fencer.max_failures);
+        debug!("Fencer monitoring state: consecutive_failures={}, max_failures={}", fencer.consecutive_failures(), fencer.max_failures());
         let active_set = active_luns.read().await;
         debug!("Current active LUNs set: {:?}", *active_set);
 
@@ -135,17 +135,7 @@ async fn main() {
             }
         };
 
-        let output: MultipathOutput = match serde_json::from_str(&response) {
-            Ok(out) => out,
-            Err(e) => {
-                warn!("Failed to parse multipathd response: {e}");
-                continue;
-            }
-        };
-
-        let maps = output.maps.unwrap_or_default();
-
-        if fencer.update(&maps, &active_set) {
+        if fencer.update(&response, &active_set) {
             if test_mode {
                 info!("TEST MODE: Fencing decision reached, but not executing reboot/SysRq kernel panic.");
             } else {

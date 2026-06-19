@@ -300,7 +300,7 @@ fn test_node_not_specified_error() {
     // Test with empty node - should fail at config creation
     use libpve_san::{PveSanConfig, PveSanError};
 
-    let config_result = PveSanConfig::with_node(String::new());
+    let config_result = PveSanConfig::with_node("");
     assert!(matches!(config_result, Err(PveSanError::NoNodeError)));
 }
 
