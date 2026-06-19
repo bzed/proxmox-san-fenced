@@ -115,10 +115,12 @@ async fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
-    let node_dir = std::path::Path::new("/etc/pve/nodes").join(&cli.node_name);
+    let base_dir =
+        std::env::var("PVE_SAN_SYS_NODES_DIR").unwrap_or_else(|_| "/etc/pve/nodes".to_string());
+    let node_dir = std::path::Path::new(&base_dir).join(&cli.node_name);
     if !node_dir.is_dir() {
         let display_path = node_dir.display();
-        error!("Node directory '{display_path}' does not exist in /etc/pve/nodes");
+        error!("Node directory '{display_path}' does not exist under {base_dir}");
         std::process::exit(1);
     }
     let node = &cli.node_name;
