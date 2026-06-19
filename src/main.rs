@@ -1,0 +1,183 @@
+//! pve-san-fenced: SAN fencing daemon for Proxmox VE
+//!
+//! Continuously monitors multipath storage states and writes to the kernel
+//! SysRq trigger upon complete, persistent storage loss for LUNs actively
+//! used by running VMs.
+//!
+//! Copyright (C) 2026 Bernd Zeimetz <bernd@bzed.de>
+//!
+//! This program is free software: you can redistribute it and/or modify
+//! it under the terms of the GNU Affero General Public License as published by
+//! the Free Software Foundation, either version 3 of the License, or
+//! (at your option) any later version.
+
+use std::collections::HashSet;
+use std::env;
+use std::sync::Arc;
+use std::time::Duration;
+use clap::Parser;
+use log::{error, info, warn};
+use tokio::sync::RwLock;
+
+use pve_san_fenced::{
+    discover_in_use_mpaths, is_map_dead, trigger_fencing, MultipathMap, MultipathOutput,
+};
+
+/// SAN fencing daemon for Proxmox VE
+#[derive(Parser, Debug)]
+#[command(name = "pve-san-fenced")]
+#[command(author = "PVE SAN Fenced")]
+#[command(version = "0.1.0")]
+#[command(about = "SAN fencing daemon for Proxmox VE", long_about = None)]
+struct Cli {
+    /// Seconds between multipathd checks
+    #[arg(long, default_value = "5")]
+    poll_interval: u64,
+
+    /// Seconds between VM and storage discovery scans
+    #[arg(long, default_value = "60")]
+    discovery_interval: u64,
+
+    /// Number of consecutive failures before fencing
+    #[arg(long, default_value = "6")]
+    max_failures: u64,
+
+    /// Specific WWIDs to monitor (if empty, monitors all maps in use by running VMs)
+    #[arg(long)]
+    target_wwids: Vec<String>,
+
+    /// Multipath socket to connect to
+    #[arg(long, default_value = libmultipath::DEFAULT_SOCKET)]
+    socket: String,
+
+    /// The name of the local Proxmox node
+    #[arg(long, short = 'n')]
+    node: String,
+
+    /// Command to use for Proxmox VE API queries
+    #[arg(long, default_value = "pvesh")]
+    pvesh_command: String,
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    // Set default log level to info if not set
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "info");
+    }
+    env_logger::init();
+
+    let cli = Cli::parse();
+    info!("Starting PVE SAN fencing daemon on node: {}", cli.node);
+
+    let active_luns = Arc::new(RwLock::new(HashSet::new()));
+
+    // Spawn VM and storage discovery task in an independent OS thread
+    let active_luns_clone = Arc::clone(&active_luns);
+    let node_clone = cli.node.clone();
+    let pvesh_cmd_clone = cli.pvesh_command.clone();
+    let discovery_interval = cli.discovery_interval;
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to build tokio runtime for discovery thread");
+
+        rt.block_on(async {
+            loop {
+                match discover_in_use_mpaths(&node_clone, &pvesh_cmd_clone).await {
+                    Ok(mpaths) => {
+                        info!("Discovered active multipath devices: {:?}", mpaths);
+                        let mut lock = active_luns_clone.write().await;
+                        *lock = mpaths;
+                    }
+                    Err(e) => {
+                        error!("Error discovering active multipath devices: {e}");
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(discovery_interval)).await;
+            }
+        });
+    });
+
+    // Run multipath monitoring loop
+    let socket = cli.socket.clone();
+    let target_wwids: HashSet<String> = cli.target_wwids.into_iter().collect();
+    let poll_interval = cli.poll_interval;
+    let max_failures = cli.max_failures;
+    let mut consecutive_failures = 0;
+
+    let mut interval = tokio::time::interval(Duration::from_secs(poll_interval));
+    loop {
+        interval.tick().await;
+
+        // Query multipathd
+        let response = match libmultipath::send_multipath_command_to_socket(&socket, "show maps json") {
+            Ok(res) => res,
+            Err(e) => {
+                warn!("Failed to query multipathd: {e}");
+                // Incrementing consecutive failures here could trigger reboot on transient daemon restarts.
+                // We just log warning as per the specification.
+                continue;
+            }
+        };
+
+        let output: MultipathOutput = match serde_json::from_str(&response) {
+            Ok(out) => out,
+            Err(e) => {
+                warn!("Failed to parse multipathd response: {e}");
+                continue;
+            }
+        };
+
+        let active_set = active_luns.read().await;
+
+        let maps = output.maps.unwrap_or_default();
+        let monitored_maps: Vec<&MultipathMap> = maps
+            .iter()
+            .filter(|map| {
+                let is_active = active_set.contains(&map.name) || active_set.contains(&map.uuid);
+                let is_targeted = if target_wwids.is_empty() {
+                    true
+                } else {
+                    target_wwids.contains(&map.uuid) || target_wwids.contains(&map.name)
+                };
+                is_active && is_targeted
+            })
+            .collect();
+
+        if monitored_maps.is_empty() {
+            if consecutive_failures > 0 {
+                info!("No active maps monitored. Resetting failure counter.");
+            }
+            consecutive_failures = 0;
+            continue;
+        }
+
+        let mut all_paths_dead = true;
+        for map in &monitored_maps {
+            if !is_map_dead(map) {
+                all_paths_dead = false;
+                break;
+            }
+        }
+
+        if all_paths_dead {
+            consecutive_failures += 1;
+            warn!(
+                "Consecutive storage failure: {}/{}",
+                consecutive_failures, max_failures
+            );
+
+            if consecutive_failures >= max_failures {
+                trigger_fencing().await;
+            }
+        } else {
+            if consecutive_failures > 0 {
+                info!("Storage connectivity restored. Resetting failure counter.");
+            }
+            consecutive_failures = 0;
+        }
+    }
+}

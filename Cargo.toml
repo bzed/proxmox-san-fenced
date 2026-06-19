@@ -1,3 +1,19 @@
+[package]
+name = "pve-san-fenced"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libmultipath = { path = "libmultipath" }
+libpve-san = { path = "libpve-san" }
+tokio = { workspace = true, features = ["rt", "time", "macros", "fs", "process", "sync"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = "0.4"
+env_logger = "0.10"
+clap = { workspace = true }
+libc = { workspace = true }
+
 [workspace]
 members = ["libmultipath", "libpve-san", "tools/mpath-query", "tools/mpath-mockd", "tools/pve-san-query", "tools/pvesh-mock"]
 resolver = "2"
