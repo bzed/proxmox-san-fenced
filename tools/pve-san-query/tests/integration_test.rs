@@ -21,6 +21,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Helper to get the workspace root directory
 fn workspace_root() -> PathBuf {
@@ -50,10 +51,18 @@ fn pve_san_query_path() -> PathBuf {
     workspace_root().join("target/debug/pve-san-query")
 }
 
+static RUN_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 /// Run pve-san-query with pvesh-mock in PATH
 fn run_pve_san_query(args: &[&str]) -> Vec<u8> {
-    let temp_dir = env::temp_dir();
-    let script_path = temp_dir.join("pvesh");
+    let count = RUN_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let unique_temp = env::temp_dir().join(format!(
+        "pve-san-query-test-run-{}-{}",
+        std::process::id(),
+        count
+    ));
+    fs::create_dir_all(&unique_temp).unwrap();
+    let script_path = unique_temp.join("pvesh");
 
     // Create a wrapper script that calls pvesh-mock
     #[cfg(unix)]
@@ -67,7 +76,7 @@ fn run_pve_san_query(args: &[&str]) -> Vec<u8> {
 
         // Set PATH to include temp dir with our mock pvesh
         let path = env::var_os("PATH").unwrap();
-        let new_path = format!("{}:{}", temp_dir.display(), path.to_string_lossy());
+        let new_path = format!("{}:{}", unique_temp.display(), path.to_string_lossy());
         env::set_var("PATH", new_path);
 
         // Set environment variable for pvesh-mock
@@ -81,7 +90,7 @@ fn run_pve_san_query(args: &[&str]) -> Vec<u8> {
             .expect("Failed to run pve-san-query");
 
         // Clean up
-        fs::remove_file(&script_path).ok();
+        fs::remove_dir_all(&unique_temp).ok();
         env::remove_var("PATH");
         env::remove_var("PVE_SAN_TEST_DATA_DIR");
 
@@ -126,21 +135,25 @@ fn test_pve_san_query_has_expected_structure() {
     assert!(data["vms"].is_array(), "vms should be an array");
 }
 
+static FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 #[test]
 fn test_pve_san_query_with_output_file() {
-    let temp_dir = env::temp_dir();
-    let output_file = temp_dir.join("pve_san_query_test_output.json");
-
-    // Clean up if file exists
-    fs::remove_file(&output_file).ok();
-
+    let count = FILE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let unique_temp = env::temp_dir().join(format!(
+        "pve-san-query-file-test-{}-{}",
+        std::process::id(),
+        count
+    ));
+    fs::create_dir_all(&unique_temp).unwrap();
+    let output_file = unique_temp.join("pve_san_query_test_output.json");
     let output_file_clone = output_file.clone();
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let script_path = temp_dir.join("pvesh");
+        let script_path = unique_temp.join("pvesh");
         let script_content = format!("#!/bin/sh\nexec {} \"$@\"", pvesh_mock_path().display());
         fs::write(&script_path, script_content).unwrap();
         let mut perms = fs::metadata(&script_path).unwrap().permissions();
@@ -149,7 +162,7 @@ fn test_pve_san_query_with_output_file() {
 
         // Set PATH to include temp dir with our mock pvesh
         let path = env::var_os("PATH").unwrap();
-        let new_path = format!("{}:{}", temp_dir.display(), path.to_string_lossy());
+        let new_path = format!("{}:{}", unique_temp.display(), path.to_string_lossy());
         env::set_var("PATH", new_path);
 
         // Set environment variable for pvesh-mock
@@ -170,11 +183,6 @@ fn test_pve_san_query_with_output_file() {
         // Check that the command succeeded
         assert!(output.status.success(), "pve-san-query should succeed");
 
-        // Clean up
-        fs::remove_file(&script_path).ok();
-        env::remove_var("PATH");
-        env::remove_var("PVE_SAN_TEST_DATA_DIR");
-
         // Check that the output file was created
         assert!(output_file_clone.exists(), "Output file should exist");
 
@@ -186,6 +194,11 @@ fn test_pve_san_query_with_output_file() {
 
         // Clean up the output file
         fs::remove_file(&output_file_clone).ok();
+
+        // Clean up the unique directory
+        fs::remove_dir_all(&unique_temp).ok();
+        env::remove_var("PATH");
+        env::remove_var("PVE_SAN_TEST_DATA_DIR");
     }
 
     #[cfg(not(unix))]
