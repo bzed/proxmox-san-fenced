@@ -202,3 +202,73 @@ pub async fn trigger_fencing() {
         }
     }
 }
+
+/// Stateful fencer to evaluate storage path states across cycles
+pub struct Fencer {
+    pub consecutive_failures: u64,
+    pub max_failures: u64,
+    pub target_wwids: HashSet<String>,
+}
+
+impl Fencer {
+    /// Creates a new Fencer
+    pub fn new(max_failures: u64, target_wwids: HashSet<String>) -> Self {
+        Self {
+            consecutive_failures: 0,
+            max_failures,
+            target_wwids,
+        }
+    }
+
+    /// Evaluates the current state of multipath maps against the active LUN set.
+    /// Returns true if fencing should be triggered.
+    pub fn update(&mut self, maps: &[MultipathMap], active_luns: &HashSet<String>) -> bool {
+        let monitored_maps: Vec<&MultipathMap> = maps
+            .iter()
+            .filter(|map| {
+                let is_active = active_luns.contains(&map.name) || active_luns.contains(&map.uuid);
+                let is_targeted = if self.target_wwids.is_empty() {
+                    true
+                } else {
+                    self.target_wwids.contains(&map.uuid) || self.target_wwids.contains(&map.name)
+                };
+                is_active && is_targeted
+            })
+            .collect();
+
+        if monitored_maps.is_empty() {
+            if self.consecutive_failures > 0 {
+                log::info!("No active maps monitored. Resetting failure counter.");
+            }
+            self.consecutive_failures = 0;
+            return false;
+        }
+
+        let mut all_paths_dead = true;
+        for map in &monitored_maps {
+            if !is_map_dead(map) {
+                all_paths_dead = false;
+                break;
+            }
+        }
+
+        if all_paths_dead {
+            self.consecutive_failures += 1;
+            log::warn!(
+                "Consecutive storage failure: {}/{}",
+                self.consecutive_failures, self.max_failures
+            );
+
+            if self.consecutive_failures >= self.max_failures {
+                return true;
+            }
+        } else {
+            if self.consecutive_failures > 0 {
+                log::info!("Storage connectivity restored. Resetting failure counter.");
+            }
+            self.consecutive_failures = 0;
+        }
+
+        false
+    }
+}

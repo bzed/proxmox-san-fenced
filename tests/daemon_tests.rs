@@ -10,7 +10,7 @@
 //! the Free Software Foundation, either version 3 of the License, or
 //! (at your option) any later version.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::PathBuf;
 
@@ -219,3 +219,180 @@ async fn test_discover_in_use_mpaths_integration() {
     // mpathc is only used by test-adm, not any running VM, so it should NOT be active
     assert!(!active_mpaths.contains("mpathc"), "mpathc should not be active");
 }
+
+/// A step in a declarative monitoring loop simulation scenario
+struct ScenarioStep {
+    /// The multipathd test data file name to read from
+    multipath_file: &'static str,
+    /// The list of active LUNs (mpath device names/WWIDs) for this step
+    active_luns: HashSet<String>,
+    /// Expected consecutive failures counter value AFTER this step
+    expected_failures: u64,
+    /// Expected fencing trigger result (true if triggered, false otherwise)
+    expected_fencing: bool,
+}
+
+/// Runs a declarative fencing simulation scenario
+fn run_scenario(max_failures: u64, target_wwids: &[&str], steps: &[ScenarioStep]) {
+    use pve_san_fenced::{Fencer, MultipathOutput};
+
+    let target_wwids_set: HashSet<String> = target_wwids.iter().map(|s| s.to_string()).collect();
+    let mut fencer = Fencer::new(max_failures, target_wwids_set);
+
+    let test_data_base = workspace_root().join("test-data/multipathd/show_maps_json");
+
+    for (i, step) in steps.iter().enumerate() {
+        let file_path = test_data_base.join(step.multipath_file);
+        let content = std::fs::read_to_string(&file_path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {}", file_path.display(), e));
+
+        let output: MultipathOutput = serde_json::from_str(&content)
+            .unwrap_or_else(|e| panic!("Failed to parse {} JSON: {}", step.multipath_file, e));
+
+        let maps = output.maps.unwrap_or_default();
+
+        let fencing_triggered = fencer.update(&maps, &step.active_luns);
+
+        assert_eq!(
+            fencer.consecutive_failures, step.expected_failures,
+            "Step {} failed: expected {} consecutive failures, got {}",
+            i, step.expected_failures, fencer.consecutive_failures
+        );
+
+        assert_eq!(
+            fencing_triggered, step.expected_fencing,
+            "Step {} failed: expected fencing_triggered to be {}, got {}",
+            i, step.expected_fencing, fencing_triggered
+        );
+    }
+}
+
+#[test]
+fn test_fencing_scenario_sustained_failure() {
+    let active_luns: HashSet<String> = vec!["mpatha".to_string()].into_iter().collect();
+
+    let steps = vec![
+        // 1. Initial healthy state
+        ScenarioStep {
+            multipath_file: "all_active_running.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 0,
+            expected_fencing: false,
+        },
+        // 2. Failure starts
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 1,
+            expected_fencing: false,
+        },
+        // 3. Failure continues
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 2,
+            expected_fencing: false,
+        },
+        // 4. Failure continues
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 3,
+            expected_fencing: false,
+        },
+        // 5. Failure continues
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 4,
+            expected_fencing: false,
+        },
+        // 6. Failure continues
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 5,
+            expected_fencing: false,
+        },
+        // 7. Threshold reached -> fence!
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 6,
+            expected_fencing: true,
+        },
+    ];
+
+    run_scenario(6, &[], &steps);
+}
+
+#[test]
+fn test_fencing_scenario_transient_failure() {
+    let active_luns: HashSet<String> = vec!["mpatha".to_string()].into_iter().collect();
+
+    let steps = vec![
+        // 1. Initial healthy state
+        ScenarioStep {
+            multipath_file: "all_active_running.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 0,
+            expected_fencing: false,
+        },
+        // 2. Failure starts
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 1,
+            expected_fencing: false,
+        },
+        // 3. Failure continues
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 2,
+            expected_fencing: false,
+        },
+        // 4. Recovery!
+        ScenarioStep {
+            multipath_file: "all_active_running.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 0,
+            expected_fencing: false,
+        },
+    ];
+
+    run_scenario(6, &[], &steps);
+}
+
+#[test]
+fn test_fencing_scenario_not_in_use() {
+    // The failed LUN (mpatha) is not in use (empty active luns list)
+    let steps = vec![
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: HashSet::new(),
+            expected_failures: 0,
+            expected_fencing: false,
+        },
+    ];
+
+    run_scenario(6, &[], &steps);
+}
+
+#[test]
+fn test_fencing_scenario_targeted() {
+    let active_luns: HashSet<String> = vec!["mpatha".to_string()].into_iter().collect();
+
+    let steps = vec![
+        // Target is non-existent WWID, so we ignore the failure on mpatha
+        ScenarioStep {
+            multipath_file: "failed_all_timeout.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 0,
+            expected_fencing: false,
+        },
+    ];
+
+    run_scenario(6, &["3600nonexistentwwid"], &steps);
+}
+

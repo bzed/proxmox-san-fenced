@@ -20,7 +20,7 @@ use log::{error, info, warn};
 use tokio::sync::RwLock;
 
 use pve_san_fenced::{
-    discover_in_use_mpaths, is_map_dead, trigger_fencing, MultipathMap, MultipathOutput,
+    discover_in_use_mpaths, trigger_fencing, Fencer, MultipathOutput,
 };
 
 /// SAN fencing daemon for Proxmox VE
@@ -106,7 +106,8 @@ async fn main() {
     let target_wwids: HashSet<String> = cli.target_wwids.into_iter().collect();
     let poll_interval = cli.poll_interval;
     let max_failures = cli.max_failures;
-    let mut consecutive_failures = 0;
+
+    let mut fencer = Fencer::new(max_failures, target_wwids);
 
     let mut interval = tokio::time::interval(Duration::from_secs(poll_interval));
     loop {
@@ -132,52 +133,10 @@ async fn main() {
         };
 
         let active_set = active_luns.read().await;
-
         let maps = output.maps.unwrap_or_default();
-        let monitored_maps: Vec<&MultipathMap> = maps
-            .iter()
-            .filter(|map| {
-                let is_active = active_set.contains(&map.name) || active_set.contains(&map.uuid);
-                let is_targeted = if target_wwids.is_empty() {
-                    true
-                } else {
-                    target_wwids.contains(&map.uuid) || target_wwids.contains(&map.name)
-                };
-                is_active && is_targeted
-            })
-            .collect();
 
-        if monitored_maps.is_empty() {
-            if consecutive_failures > 0 {
-                info!("No active maps monitored. Resetting failure counter.");
-            }
-            consecutive_failures = 0;
-            continue;
-        }
-
-        let mut all_paths_dead = true;
-        for map in &monitored_maps {
-            if !is_map_dead(map) {
-                all_paths_dead = false;
-                break;
-            }
-        }
-
-        if all_paths_dead {
-            consecutive_failures += 1;
-            warn!(
-                "Consecutive storage failure: {}/{}",
-                consecutive_failures, max_failures
-            );
-
-            if consecutive_failures >= max_failures {
-                trigger_fencing().await;
-            }
-        } else {
-            if consecutive_failures > 0 {
-                info!("Storage connectivity restored. Resetting failure counter.");
-            }
-            consecutive_failures = 0;
+        if fencer.update(&maps, &active_set) {
+            trigger_fencing().await;
         }
     }
 }
