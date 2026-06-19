@@ -749,4 +749,92 @@ test-data/
 
 ## 6. PVE SAN Fencing Daemon (pve-san-fenced) <a name="pve-san-fencing-daemon-pve-san-fenced"></a>
 
-*This section will be filled in later with the implementation details for the main pve-san-fenced daemon.*
+**Purpose**: A robust daemon to continuously monitor multipath states via `libmultipath` and write to the kernel SysRq trigger to fence the node upon complete, persistent SAN storage loss.
+
+**Location**: `src/` (root package of the workspace)
+
+**Dependencies**:
+**Dependencies**:
+- `libmultipath = { path = "../libmultipath" }`
+- `libpve-san = { path = "../libpve-san" }`
+- `tokio = { workspace = true, features = ["rt", "time", "macros", "fs", "process", "sync"] }`
+- `serde = { workspace = true }`
+- `serde_json = { workspace = true }`
+- `log = "0.4"`
+- `env_logger = "0.10"` (or similar for stdout logging)
+- `clap = { workspace = true }`
+- `libc = { workspace = true }`
+
+**CLI Arguments**:
+- `--poll-interval` (default: 5): Seconds between multipathd checks.
+- `--discovery-interval` (default: 60): Seconds between VM and storage discovery scans.
+- `--max-failures` (default: 6): Number of consecutive failures before fencing (6 * 5s = 30s).
+- `--target-wwids` (optional, multiple): Specific WWIDs to monitor. If empty, monitors maps discovered to be in use.
+- `--socket` (default: `DEFAULT_SOCKET` from libmultipath): Multipath socket to connect to.
+- `--node` (required): The name of the Proxmox node to query for VM data.
+
+**Data Structures**:
+
+```rust
+#[derive(Deserialize)]
+struct MultipathOutput {
+    maps: Option<Vec<MultipathMap>>,
+}
+
+#[derive(Deserialize)]
+struct MultipathMap {
+    name: String, // WWID
+    uuid: String,
+    path_groups: Option<Vec<PathGroup>>,
+}
+
+#[derive(Deserialize)]
+struct PathGroup {
+    state: String, // "active", "offline", "failed", etc.
+}
+```
+
+**Architecture & Core Logic**:
+
+To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon is structured into two independent concurrent asynchronous tasks. Data is shared using a thread-safe structure like `Arc<RwLock<HashSet<String>>>` containing the active WWIDs/dm-names.
+
+1. **Discovery Task (VM & Storage Mapping)**:
+   - Construct an async loop that executes every `DISCOVERY_INTERVAL` seconds.
+   - Uses `libpve-san` (`get_san_storage_info`) to read the configs of all running VMs and discover their storage endpoints.
+   - Uses `lsblk` (via `libpve-san`) to discover underlying block devices and device mapper layers.
+   - Finds the multipath device mapper device (`dm_name` / `WWID`) associated with the storage if it is in use by a running VM.
+   - Replaces the shared `HashSet` of active LUNs with the newly discovered in-use multipath devices.
+   - This separate thread ensures that if `lsblk` or `pvesh` block due to underlying storage IO lockups during a SAN failure, it does not prevent the monitoring thread from executing the fencing action.
+
+2. **Monitoring Task (Failure Detection and Fencing)**:
+   - Construct an async loop that executes every `POLL_INTERVAL` seconds using `tokio::time::interval`.
+   - **Multipath Query**:
+     - Call `libmultipath::send_multipath_command_to_socket(&config.socket, "show maps json")`.
+     - Implement exception handling: If `multipathd` fails to respond or crashes (socket error or timeout), log a critical warning and increment a separate daemon-failure counter, but **do not** immediately panic the system to avoid false positives.
+   - **JSON Parsing and Validation**:
+     - Parse the JSON output into the `MultipathOutput` struct.
+     - Acquire a read lock on the shared `HashSet` of active LUNs discovered by the Discovery Task.
+     - Initialize an `all_paths_dead = true` flag.
+     - **Filtering**: Only evaluate maps that are present in the active LUNs `HashSet` (or explicitly provided via `--target-wwids`). Ignore failures for LUNs not actively used by any running VM.
+     - For each actively used map, iterate through its `path_groups`.
+     - If **any** path group reports a `state` other than `"offline"` or `"failed"` (e.g., `"active"`, `"enabled"`), set `all_paths_dead = false` and break the loop for that map.
+   - **Threshold Evaluation**:
+     - If `all_paths_dead == true` (meaning all *actively used* LUNs have lost all paths), increment the consecutive failure counter.
+     - Log a warning: `"Consecutive storage failure {count}/{MAX_FAILURES}"`.
+     - If `all_paths_dead == false` or there are no actively used LUNs, reset the consecutive failure counter to 0.
+   - **The Fencing Execution Block**:
+     - If the consecutive failure counter meets or exceeds `MAX_FAILURES`, execute the final sequence:
+       1. Log critical: `"SAN FENCER: Total persistent storage loss detected. Threshold met."`
+       2. Log critical: `"SAN FENCER: Initiating filesystem sync..."`
+       3. Sync filesystems to flush any memory buffers for local storage (OS disk) using `unsafe { libc::sync() }`.
+       4. Wait 2 seconds using `tokio::time::sleep(std::time::Duration::from_secs(2)).await`.
+       5. Log critical: `"SAN FENCER: Triggering SysRq Kernel Panic NOW."`
+       6. Trigger Kernel Panic:
+          - Attempt to write `"c"` to `/proc/sysrq-trigger` using `tokio::fs::write`.
+          - If that fails, log the error and write `"b"` (reboot) to `/proc/sysrq-trigger` as a fallback.
+
+**Testing**:
+- Use `mpath-mockd` as a test double to simulate multipathd responses.
+- Write unit tests for the JSON parsing, LUN filtering, and threshold evaluation logic.
+- Mock the fencing execution block (e.g., using a trait, function pointer, or dry-run flag) to verify it is called without actually panicking the test system.
+- Include integration tests verifying that transient failures (e.g., 2 failures followed by recovery) reset the counter, and sustained failures trigger fencing.
