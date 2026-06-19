@@ -35,15 +35,15 @@ fn get_default_node_name() -> String {
 #[command(about = "SAN fencing daemon for Proxmox VE", long_about = None)]
 struct Cli {
     /// Seconds between multipathd checks
-    #[arg(long, default_value = "5")]
+    #[arg(long, env = "PVE_SAN_POLL_INTERVAL", default_value = "5")]
     poll_interval: u64,
 
     /// Seconds between VM and storage discovery scans
-    #[arg(long, default_value = "60")]
+    #[arg(long, env = "PVE_SAN_DISCOVERY_INTERVAL", default_value = "60")]
     discovery_interval: u64,
 
     /// Number of consecutive failures before fencing
-    #[arg(long, default_value = "6")]
+    #[arg(long, env = "PVE_SAN_MAX_FAILURES", default_value = "6")]
     max_failures: u64,
 
     /// Specific WWIDs to monitor (if empty, monitors all maps in use by running VMs)
@@ -51,23 +51,28 @@ struct Cli {
     target_wwids: Vec<String>,
 
     /// Multipath socket to connect to
-    #[arg(long, default_value = libmultipath::DEFAULT_SOCKET)]
+    #[arg(long, env = "PVE_SAN_SOCKET", default_value = libmultipath::DEFAULT_SOCKET)]
     socket: String,
 
     /// The name of the local Proxmox node
-    #[arg(long = "node-name", short = 'n', default_value_t = get_default_node_name())]
+    #[arg(
+        long = "node-name",
+        short = 'n',
+        env = "PVE_SAN_NODE_NAME",
+        default_value_t = get_default_node_name()
+    )]
     node_name: String,
 
     /// Command to use for Proxmox VE API queries
-    #[arg(long, default_value = "pvesh")]
+    #[arg(long, env = "PVE_SAN_PVESH_COMMAND", default_value = "pvesh")]
     pvesh_command: String,
 
     /// Run in test mode (only logs changes and decisions, does not trigger reboot)
-    #[arg(long, short = 't')]
+    #[arg(long, short = 't', env = "PVE_SAN_TEST_MODE")]
     test_mode: bool,
 
     /// The character to write to /proc/sysrq-trigger (default: b for immediate reboot, c for panic)
-    #[arg(long, default_value = "b")]
+    #[arg(long, env = "PVE_SAN_SYSRQ_CHAR", default_value = "b")]
     sysrq_char: String,
 }
 
@@ -250,5 +255,21 @@ mod tests {
             sysrq_char: "c".to_string(),
         };
         assert_eq!(cli_default, expected_default);
+
+        // Test environment variable overrides
+        std::env::set_var("PVE_SAN_POLL_INTERVAL", "15");
+        std::env::set_var("PVE_SAN_MAX_FAILURES", "10");
+        std::env::set_var("PVE_SAN_TEST_MODE", "true");
+
+        let args_env = vec!["pve-san-fenced", "-n", "pve01", "--sysrq-char", "c"];
+        let cli_env = Cli::try_parse_from(args_env).unwrap();
+
+        std::env::remove_var("PVE_SAN_POLL_INTERVAL");
+        std::env::remove_var("PVE_SAN_MAX_FAILURES");
+        std::env::remove_var("PVE_SAN_TEST_MODE");
+
+        assert_eq!(cli_env.poll_interval, 15);
+        assert_eq!(cli_env.max_failures, 10);
+        assert!(cli_env.test_mode);
     }
 }

@@ -45,6 +45,30 @@ The character to write to /proc/sysrq-trigger when fencing. Default is "b" (rebo
 Run the daemon in test/dry-run mode. Fencing decisions and transitions are logged, but the reboot/panic is not triggered.
 .SH ENVIRONMENT
 .TP
+.B PVE_SAN_POLL_INTERVAL
+Interval in seconds between checking multipath maps. Corresponds to \fB\-\-poll\-interval\fR.
+.TP
+.B PVE_SAN_DISCOVERY_INTERVAL
+Interval in seconds between rescanning running VMs and storage configurations. Corresponds to \fB\-\-discovery\-interval\fR.
+.TP
+.B PVE_SAN_MAX_FAILURES
+Number of consecutive polling failures required before triggering the fencing mechanism. Corresponds to \fB\-\-max\-failures\fR.
+.TP
+.B PVE_SAN_SOCKET
+Multipathd abstract socket path to connect to. Corresponds to \fB\-\-socket\fR.
+.TP
+.B PVE_SAN_NODE_NAME
+The name of the local Proxmox VE node. Corresponds to \fB\-\-node\-name\fR.
+.TP
+.B PVE_SAN_PVESH_COMMAND
+Command or path to use for Proxmox VE API queries. Corresponds to \fB\-\-pvesh\-command\fR.
+.TP
+.B PVE_SAN_TEST_MODE
+If set (to a non-empty, non-false value), runs the daemon in test/dry-run mode. Corresponds to \fB\-t\fR, \fB\-\-test\-mode\fR.
+.TP
+.B PVE_SAN_SYSRQ_CHAR
+The character to write to /proc/sysrq-trigger when fencing. Corresponds to \fB\-\-sysrq\-char\fR.
+.TP
 .B PVE_SAN_FENCE_DRY_RUN
 If set, the daemon acts as if running in test mode internally and exits instead of writing to the SysRq trigger.
 .SH FILES
