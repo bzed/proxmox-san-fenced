@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::Path;
 use std::time::Duration;
-use log::{error, warn};
+use log::{debug, error, info, warn};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -101,6 +101,7 @@ pub async fn discover_in_use_mpaths(
         pvesh_command.to_string(),
     )?;
     let storage_info = client.get_san_storage_info().await?;
+    debug!("Discovered storage info: {:?}", storage_info);
 
     // 2. Fetch lsblk tree (either mock data or command execution)
     let lsblk_json = if let Ok(test_data_dir) = env::var("PVE_SAN_TEST_DATA_DIR") {
@@ -122,6 +123,7 @@ pub async fn discover_in_use_mpaths(
     if let Some(devices) = lsblk_output.blockdevices {
         build_mpath_map(&devices, /*current_mpath*/ None, &mut mpath_map);
     }
+    debug!("Built multipath-to-disk map: {:?}", mpath_map);
 
     // 3. Map running VM disks to their parent multipath devices
     let mut active_mpaths = HashSet::new();
@@ -148,6 +150,7 @@ pub async fn discover_in_use_mpaths(
         }
     }
 
+    debug!("Final active multipath set: {:?}", active_mpaths);
     Ok(active_mpaths)
 }
 
@@ -208,6 +211,7 @@ pub struct Fencer {
     pub consecutive_failures: u64,
     pub max_failures: u64,
     pub target_wwids: HashSet<String>,
+    pub previous_map_states: HashMap<String, bool>,
 }
 
 impl Fencer {
@@ -217,12 +221,15 @@ impl Fencer {
             consecutive_failures: 0,
             max_failures,
             target_wwids,
+            previous_map_states: HashMap::new(),
         }
     }
 
     /// Evaluates the current state of multipath maps against the active LUN set.
     /// Returns true if fencing should be triggered.
     pub fn update(&mut self, maps: &[MultipathMap], active_luns: &HashSet<String>) -> bool {
+        debug!("All multipath maps returned from multipathd: {:?}", maps);
+
         let monitored_maps: Vec<&MultipathMap> = maps
             .iter()
             .filter(|map| {
@@ -236,11 +243,24 @@ impl Fencer {
             })
             .collect();
 
+        debug!("Monitored maps subset: {:?}", monitored_maps);
+
+        for map in &monitored_maps {
+            debug!("Map {} path details: {:?}", map.name, map.path_groups);
+            let is_dead = is_map_dead(map);
+            let prev_dead = self.previous_map_states.insert(map.name.clone(), is_dead);
+            if prev_dead != Some(is_dead) {
+                let status_str = if is_dead { "FAILED (all paths dead)" } else { "HEALTHY (active path(s) found)" };
+                info!("Multipath map {} state changed to: {status_str}", map.name);
+            }
+        }
+
         if monitored_maps.is_empty() {
             if self.consecutive_failures > 0 {
-                log::info!("No active maps monitored. Resetting failure counter.");
+                info!("No active maps monitored. Resetting failure counter.");
             }
             self.consecutive_failures = 0;
+            debug!("Fencer cycle result - no monitored maps, consecutive_failures: 0");
             return false;
         }
 
@@ -252,19 +272,30 @@ impl Fencer {
             }
         }
 
+        debug!("Fencer cycle result - all_paths_dead: {all_paths_dead}, consecutive_failures: {}", self.consecutive_failures);
+
         if all_paths_dead {
             self.consecutive_failures += 1;
-            log::warn!(
+            warn!(
                 "Consecutive storage failure: {}/{}",
                 self.consecutive_failures, self.max_failures
             );
 
             if self.consecutive_failures >= self.max_failures {
+                let dead_map_names: Vec<String> = monitored_maps
+                    .iter()
+                    .map(|m| format!("{} ({})", m.name, m.uuid))
+                    .collect();
+                warn!(
+                    "DECISION: Rebooting node because all monitored multipath maps in use by running VMs have failed. \
+                     Failed monitored maps: {dead_map_names:?}. Active LUNs: {active_luns:?}. Target WWIDs: {:?}.",
+                    self.target_wwids
+                );
                 return true;
             }
         } else {
             if self.consecutive_failures > 0 {
-                log::info!("Storage connectivity restored. Resetting failure counter.");
+                info!("Storage connectivity restored. Resetting failure counter.");
             }
             self.consecutive_failures = 0;
         }

@@ -16,7 +16,7 @@ use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use clap::Parser;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use tokio::sync::RwLock;
 
 use pve_san_fenced::{
@@ -57,6 +57,10 @@ struct Cli {
     /// Command to use for Proxmox VE API queries
     #[arg(long, default_value = "pvesh")]
     pvesh_command: String,
+
+    /// Run in test mode (only logs changes and decisions, does not trigger reboot)
+    #[arg(long, short = 't')]
+    test_mode: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -88,9 +92,11 @@ async fn main() {
             loop {
                 match discover_in_use_mpaths(&node_clone, &pvesh_cmd_clone).await {
                     Ok(mpaths) => {
-                        info!("Discovered active multipath devices: {:?}", mpaths);
                         let mut lock = active_luns_clone.write().await;
-                        *lock = mpaths;
+                        if *lock != mpaths {
+                            info!("Active multipath devices changed. Previous: {:?}, New: {mpaths:?}", *lock);
+                            *lock = mpaths;
+                        }
                     }
                     Err(e) => {
                         error!("Error discovering active multipath devices: {e}");
@@ -106,12 +112,17 @@ async fn main() {
     let target_wwids: HashSet<String> = cli.target_wwids.into_iter().collect();
     let poll_interval = cli.poll_interval;
     let max_failures = cli.max_failures;
+    let test_mode = cli.test_mode;
 
     let mut fencer = Fencer::new(max_failures, target_wwids);
 
     let mut interval = tokio::time::interval(Duration::from_secs(poll_interval));
     loop {
         interval.tick().await;
+
+        debug!("Fencer monitoring state: consecutive_failures={}, max_failures={}", fencer.consecutive_failures, fencer.max_failures);
+        let active_set = active_luns.read().await;
+        debug!("Current active LUNs set: {:?}", *active_set);
 
         // Query multipathd
         let response = match libmultipath::send_multipath_command_to_socket(&socket, "show maps json") {
@@ -132,11 +143,36 @@ async fn main() {
             }
         };
 
-        let active_set = active_luns.read().await;
         let maps = output.maps.unwrap_or_default();
 
         if fencer.update(&maps, &active_set) {
-            trigger_fencing().await;
+            if test_mode {
+                info!("TEST MODE: Fencing decision reached, but not executing reboot/SysRq kernel panic.");
+            } else {
+                trigger_fencing().await;
+            }
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_parsing() {
+        let args = vec!["pve-san-fenced", "-n", "pve01", "-t"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert!(cli.test_mode);
+        assert_eq!(cli.node, "pve01");
+
+        let args2 = vec!["pve-san-fenced", "-n", "pve01", "--test-mode"];
+        let cli2 = Cli::try_parse_from(args2).unwrap();
+        assert!(cli2.test_mode);
+
+        let args3 = vec!["pve-san-fenced", "-n", "pve01"];
+        let cli3 = Cli::try_parse_from(args3).unwrap();
+        assert!(!cli3.test_mode);
+    }
+}
+
