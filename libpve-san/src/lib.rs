@@ -354,6 +354,10 @@ impl PveSanClient {
                 continue;
             }
 
+            if line.starts_with('[') {
+                break; // Stop parsing when we hit a section header ([PENDING] or snapshot)
+            }
+
             if let Some((key, value)) = line.split_once(':') {
                 let key = key.trim().to_string();
                 let value = value.trim().to_string();
@@ -628,13 +632,14 @@ mod tests {
     fn test_parse_vm_config() {
         let config = PveSanConfig::with_node("test").unwrap();
         let client = PveSanClient::new(config);
-        let config_text = "name: test-vm\nscsi0: local-lvm:vm-100-disk-0,size=10G\nstatus: running";
+        let config_text = "name: test-vm\nscsi0: local-lvm:vm-100-disk-0,size=10G\nstatus: running\n\n[PENDING]\nscsi1: local-lvm:vm-100-disk-1,size=20G";
         let result = client.parse_vm_config(config_text);
         assert!(result.is_ok());
         let config_map = result.unwrap();
         assert_eq!(config_map.get("name"), Some(&"test-vm".to_string()));
         assert_eq!(config_map.get("scsi0"), Some(&"local-lvm:vm-100-disk-0,size=10G".to_string()));
         assert_eq!(config_map.get("status"), Some(&"running".to_string()));
+        assert_eq!(config_map.get("scsi1"), None); // scsi1 is in PENDING and should be ignored
     }
 
     #[test]
