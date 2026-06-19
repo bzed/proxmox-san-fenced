@@ -772,6 +772,7 @@ test-data/
 - `--target-wwids` (optional, multiple): Specific WWIDs to monitor. If empty, monitors maps discovered to be in use.
 - `--socket` (default: `DEFAULT_SOCKET` from libmultipath): Multipath socket to connect to.
 - `--node` (required): The name of the Proxmox node to query for VM data.
+- `--test-mode` / `-t` (optional, flag): Runs in test mode (only logs changes and decisions, does not trigger reboot/fencing).
 
 **Data Structures**:
 
@@ -803,8 +804,10 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
    - Uses `libpve-san` (`get_san_storage_info`) to read the configs of all running VMs and discover their storage endpoints.
    - Uses `lsblk` (via `libpve-san`) to discover underlying block devices and device mapper layers.
    - Finds the multipath device mapper device (`dm_name` / `WWID`) associated with the storage if it is in use by a running VM.
+   - Logs any change in the active multipath devices set at `info` level (showing the previous and new sets).
    - Replaces the shared `HashSet` of active LUNs with the newly discovered in-use multipath devices.
    - This separate thread ensures that if `lsblk` or `pvesh` block due to underlying storage IO lockups during a SAN failure, it does not prevent the monitoring thread from executing the fencing action.
+   - Logs discovered storage configurations, built lsblk mapping, and final active multipath sets at `debug` level.
 
 2. **Monitoring Task (Failure Detection and Fencing)**:
    - Construct an async loop that executes every `POLL_INTERVAL` seconds using `tokio::time::interval`.
@@ -818,23 +821,33 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
      - **Filtering**: Only evaluate maps that are present in the active LUNs `HashSet` (or explicitly provided via `--target-wwids`). Ignore failures for LUNs not actively used by any running VM.
      - For each actively used map, iterate through its `path_groups`.
      - If **any** path group reports a `state` other than `"offline"` or `"failed"` (e.g., `"active"`, `"enabled"`), set `all_paths_dead = false` and break the loop for that map.
+     - Track map states (dead vs. alive) across monitoring cycles. If a monitored map's state transitions, log this change at `info` level.
+     - Debug log all states (fencer consecutive failures, active set, fencer cycle status, path states) and raw configs returned by `multipathd` at `debug` level.
    - **Threshold Evaluation**:
      - If `all_paths_dead == true` (meaning all *actively used* LUNs have lost all paths), increment the consecutive failure counter.
      - Log a warning: `"Consecutive storage failure {count}/{MAX_FAILURES}"`.
      - If `all_paths_dead == false` or there are no actively used LUNs, reset the consecutive failure counter to 0.
    - **The Fencing Execution Block**:
      - If the consecutive failure counter meets or exceeds `MAX_FAILURES`, execute the final sequence:
-       1. Log critical: `"SAN FENCER: Total persistent storage loss detected. Threshold met."`
-       2. Log critical: `"SAN FENCER: Initiating filesystem sync..."`
-       3. Sync filesystems to flush any memory buffers for local storage (OS disk) using `unsafe { libc::sync() }`.
-       4. Wait 2 seconds using `tokio::time::sleep(std::time::Duration::from_secs(2)).await`.
-       5. Log critical: `"SAN FENCER: Triggering SysRq Kernel Panic NOW."`
-       6. Trigger Kernel Panic:
-          - Attempt to write `"c"` to `/proc/sysrq-trigger` using `tokio::fs::write`.
-          - If that fails, log the error and write `"b"` (reboot) to `/proc/sysrq-trigger` as a fallback.
+       1. Log the decision with the detailed reason (default logging):
+          `"DECISION: Rebooting node because all monitored multipath maps in use by running VMs have failed. Failed monitored maps: {dead_map_names:?}. Active LUNs: {active_luns:?}. Target WWIDs: {target_wwids:?}."`
+       2. Check if `--test-mode` / `-t` flag is active:
+          - If **active**, log that fencing decision was reached but not executed:
+            `"TEST MODE: Fencing decision reached, but not executing reboot/SysRq kernel panic."`
+            The loop will then continue normal monitoring without executing the panic or reboot.
+          - If **not active**, execute the fencing sequence:
+            1. Log critical: `"SAN FENCER: Total persistent storage loss detected. Threshold met."`
+            2. Log critical: `"SAN FENCER: Initiating filesystem sync..."`
+            3. Sync filesystems to flush any memory buffers for local storage (OS disk) using `unsafe { libc::sync() }`.
+            4. Wait 2 seconds using `tokio::time::sleep(std::time::Duration::from_secs(2)).await`.
+            5. Log critical: `"SAN FENCER: Triggering SysRq Kernel Panic NOW."`
+            6. Trigger Kernel Panic:
+               - Attempt to write `"c"` to `/proc/sysrq-trigger` using `tokio::fs::write`.
+               - If that fails, log the error and write `"b"` (reboot) to `/proc/sysrq-trigger` as a fallback.
 
 **Testing**:
 - Use `mpath-mockd` as a test double to simulate multipathd responses.
 - Write unit tests for the JSON parsing, LUN filtering, and threshold evaluation logic.
 - Mock the fencing execution block (e.g., using a trait, function pointer, or dry-run flag) to verify it is called without actually panicking the test system.
 - Include integration tests verifying that transient failures (e.g., 2 failures followed by recovery) reset the counter, and sustained failures trigger fencing.
+- Include tests for CLI argument parsing (e.g., validating that the `-t` and `--test-mode` flags are correctly parsed).
