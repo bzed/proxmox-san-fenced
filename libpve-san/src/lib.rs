@@ -313,6 +313,9 @@ impl PveSanClient {
         Ok(vms)
     }
 
+    // NOTE: `vmid` is currently a u64, preventing path traversal vulnerabilities.
+    // If the API is ever changed to accept a string identifier, the input MUST be validated
+    // as a pure numeric string to prevent path traversal via config file path construction.
     #[tracing::instrument(skip(self))]
     async fn get_vm_config(&self, vmid: u64) -> PveSanResult<HashMap<String, String>> {
         let local_path = if let Ok(test_dir) = std::env::var("PVE_SAN_TEST_DATA_DIR") {
@@ -397,20 +400,33 @@ impl PveSanClient {
 
         for (key, value) in config_map {
             for prefix in &disk_prefixes {
-                if key.starts_with(prefix) && key.len() > prefix.len() {
+                if key.starts_with(prefix) {
+                    if key.len() == prefix.len() {
+                        tracing::warn!("Unexpected disk key '{key}' without numeric index");
+                        continue;
+                    }
                     let index_str = &key[prefix.len()..];
-                    if let Ok(index) = index_str.parse::<u32>() {
-                        let device_id = format!("{}{}", prefix, index);
-                        let (storage, metadata) = self.parse_disk_value(value)?;
+                    match index_str.parse::<u32>() {
+                        Ok(index) => {
+                            if index > 99 {
+                                tracing::warn!("Ignoring unexpected disk key '{key}' with index {index} exceeding limit of 99");
+                                continue;
+                            }
+                            let device_id = format!("{}{}", prefix, index);
+                            let (storage, metadata) = self.parse_disk_value(value)?;
 
-                        disks.push(VmDisk {
-                            device_id,
-                            storage,
-                            device_path: None,
-                            device_mapper_name: None,
-                            size_bytes: metadata.get("size").and_then(|s| Self::parse_size(s)),
-                            metadata: Some(metadata),
-                        });
+                            disks.push(VmDisk {
+                                device_id,
+                                storage,
+                                device_path: None,
+                                device_mapper_name: None,
+                                size_bytes: metadata.get("size").and_then(|s| Self::parse_size(s)),
+                                metadata: Some(metadata),
+                            });
+                        }
+                        Err(_) => {
+                            tracing::warn!("Unexpected disk key '{key}' with non-numeric suffix '{index_str}'");
+                        }
                     }
                 }
             }
@@ -770,6 +786,10 @@ mod tests {
             "local-lvm:vm-100-disk-2,size=20G,backup=0".to_string(),
         );
         config_map.insert("status".to_string(), "running".to_string());
+        // Insert invalid/excessive disk keys to test sanitization and warning paths
+        config_map.insert("scsi999".to_string(), "local-lvm:vm-100-disk-excessive,size=10G".to_string());
+        config_map.insert("scsi".to_string(), "local-lvm:vm-100-disk-missing-index,size=10G".to_string());
+        config_map.insert("scsiaux".to_string(), "local-lvm:vm-100-disk-invalid-index,size=10G".to_string());
 
         let mut disks = client.extract_disks(&config_map).unwrap();
         assert_eq!(disks.len(), 3);
