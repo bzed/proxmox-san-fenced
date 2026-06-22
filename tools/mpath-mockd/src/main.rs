@@ -29,7 +29,7 @@ use std::thread;
 
 use libc::{
     accept, bind, close, getpid, listen, read, setsockopt, sockaddr_un, socket, write, AF_UNIX,
-    SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR,
+    SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, SO_REUSEPORT,
 };
 
 /// Default socket path for the mock daemon
@@ -305,13 +305,28 @@ fn create_abstract_socket(socket_path: &str) -> io::Result<i32> {
         return Err(io::Error::last_os_error());
     }
 
-    // Set SO_REUSEADDR to allow quick restart
+    let normalized = socket_path.strip_prefix('@').unwrap_or(socket_path);
+    if normalized == "org/kernel/linux/storage/multipathd" || normalized == "/org/kernel/linux/storage/multipathd" {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Cannot bind to the real system multipathd socket path",
+        ));
+    }
+
+    // Set SO_REUSEADDR and SO_REUSEPORT to allow quick restart
     let one: libc::c_int = 1;
     unsafe {
         setsockopt(
             fd,
             SOL_SOCKET,
             SO_REUSEADDR,
+            &one as *const _ as *const libc::c_void,
+            mem::size_of_val(&one) as libc::socklen_t,
+        );
+        setsockopt(
+            fd,
+            SOL_SOCKET,
+            SO_REUSEPORT,
             &one as *const _ as *const libc::c_void,
             mem::size_of_val(&one) as libc::socklen_t,
         );

@@ -599,3 +599,32 @@ fn test_daemon_auto_loads_multiple_files() {
         failed_count
     );
 }
+
+#[test]
+fn test_daemon_refuses_system_socket() {
+    let daemon = Command::new(daemon_path())
+        .arg("--socket")
+        .arg("@/org/kernel/linux/storage/multipathd")
+        .arg("--test-data-dir")
+        .arg(test_data_dir())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start test daemon");
+
+    let mut daemon = daemon;
+    // The daemon should exit immediately with an error (non-zero status)
+    let start = Instant::now();
+    let mut exited = false;
+    let mut exit_status = None;
+    while start.elapsed() < Duration::from_secs(2) {
+        if let Ok(Some(status)) = daemon.try_wait() {
+            exited = true;
+            exit_status = Some(status);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(exited, "Daemon should have exited immediately");
+    assert!(!exit_status.unwrap().success(), "Daemon should have failed to start (non-zero exit code)");
+}
