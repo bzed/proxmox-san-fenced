@@ -581,18 +581,17 @@ fn test_daemon_auto_loads_multiple_files() {
     daemon.kill().ok();
     daemon.wait().ok();
 
-    // With 2 files in show_maps_json/ (all_active_running.json and failed_all_timeout.json)
-    // we should cycle through both
+    // With files in show_maps_json/, we should cycle through both active and failed states
     let active_count = results
         .iter()
-        .filter(|s| s.contains("\"paths\" : 16"))
+        .filter(|s| s.contains("\"paths\" : 16") || s.contains("\"paths\": 16"))
         .count();
     let failed_count = results
         .iter()
-        .filter(|s| s.contains("\"paths\" : 0"))
+        .filter(|s| s.contains("\"paths\" : 0") || s.contains("\"paths\": 0"))
         .count();
 
-    // With 4 queries and 2 files, we should get 2 of each
+    // With 4 queries, we should get at least one active and one failed
     assert!(
         active_count >= 1 && failed_count >= 1,
         "Should cycle through multiple files, got {} active and {} failed",

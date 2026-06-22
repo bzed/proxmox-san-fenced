@@ -285,3 +285,127 @@ fn test_integration_transient_failure_recovery() {
     assert!(!full_logs.contains("Consecutive storage failure: 3/3"));
     assert!(!full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
 }
+
+#[test]
+fn test_integration_ghost_paths_fencing() {
+    let mut ctx = TestContext::new("ghost_paths_fencing", "pve001");
+
+    // Start mock daemon with maps always reporting ghost paths
+    start_mockd(&mut ctx, "show maps json=failed_ghost_only.json");
+
+    // Start fencer daemon
+    start_fencer(&mut ctx, "pve001", &[]);
+
+    // The daemon should fence after 3 failures (max-failures 3, poll-interval 1s)
+    let start = std::time::Instant::now();
+    let mut exit_status = None;
+    let mut fencer = ctx
+        .target_daemon
+        .take()
+        .expect("Fencer process not tracked");
+
+    while start.elapsed() < Duration::from_secs(10) {
+        if let Some(status) = fencer.try_wait().unwrap() {
+            exit_status = Some(status);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    if exit_status.is_none() {
+        fencer.kill().ok();
+        let output = fencer.wait_with_output().unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!(
+            "Fencer failed to exit within 10 seconds under sustained ghost path failure!\nFencer Logs:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+        );
+    }
+
+    let status = exit_status.unwrap();
+    assert!(
+        status.success(),
+        "Fencer daemon exited with failure code instead of clean dry-run exit: {status:?}"
+    );
+
+    let output = fencer.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+
+    assert!(full_logs.contains("Consecutive storage failure: 1/3"));
+    assert!(full_logs.contains("Consecutive storage failure: 2/3"));
+    assert!(full_logs.contains("Consecutive storage failure: 3/3"));
+    assert!(full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
+    assert!(full_logs.contains("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon."));
+}
+
+#[test]
+fn test_integration_some_undef_some_active_stable() {
+    let mut ctx = TestContext::new("some_undef_some_active", "pve001");
+
+    // Start mock daemon with some undef paths (which are treated as alive)
+    start_mockd(&mut ctx, "show maps json=some_undef_some_active.json");
+
+    // Start fencer daemon
+    start_fencer(&mut ctx, "pve001", &[]);
+
+    // Run for 4 seconds to verify fencer remains stable and does not fence
+    std::thread::sleep(Duration::from_secs(4));
+
+    let mut fencer = ctx
+        .target_daemon
+        .take()
+        .expect("Fencer process not tracked");
+    if fencer.try_wait().unwrap().is_some() {
+        let output = fencer.wait_with_output().unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!(
+            "Fencer exited prematurely under stable undef/active mix! Logs:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+        );
+    }
+
+    fencer.kill().ok();
+    let output = fencer.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+    assert!(!full_logs.contains("Consecutive storage failure"));
+    assert!(!full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
+}
+
+#[test]
+fn test_integration_disabled_pg_active_path_stable() {
+    let mut ctx = TestContext::new("disabled_pg_active_path", "pve001");
+
+    // Start mock daemon with a disabled pg but containing active paths
+    start_mockd(&mut ctx, "show maps json=disabled_pg_active_path.json");
+
+    // Start fencer daemon
+    start_fencer(&mut ctx, "pve001", &[]);
+
+    // Run for 4 seconds to verify fencer remains stable and does not fence
+    std::thread::sleep(Duration::from_secs(4));
+
+    let mut fencer = ctx
+        .target_daemon
+        .take()
+        .expect("Fencer process not tracked");
+    if fencer.try_wait().unwrap().is_some() {
+        let output = fencer.wait_with_output().unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!(
+            "Fencer exited prematurely under disabled pg with active paths! Logs:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+        );
+    }
+
+    fencer.kill().ok();
+    let output = fencer.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+    assert!(!full_logs.contains("Consecutive storage failure"));
+    assert!(!full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
+}
