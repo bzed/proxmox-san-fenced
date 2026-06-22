@@ -497,6 +497,58 @@ mod tests {
             }]),
         };
         assert!(!is_map_dead(&missing_st_map));
+
+        // 3. Map with path state "undef" (treated as alive since it is not failed/faulty/ghost)
+        let undef_path_map = MultipathMap {
+            name: "mpatha".to_string(),
+            uuid: "36002".to_string(),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("active".to_string()),
+                paths: Some(vec![MpathPath {
+                    dm_st: Some("undef".to_string()),
+                }]),
+            }]),
+        };
+        assert!(!is_map_dead(&undef_path_map));
+
+        // 4. Map with path group state "enabled"
+        let enabled_pg_map = MultipathMap {
+            name: "mpatha".to_string(),
+            uuid: "36003".to_string(),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("enabled".to_string()),
+                paths: Some(vec![MpathPath {
+                    dm_st: Some("active".to_string()),
+                }]),
+            }]),
+        };
+        assert!(!is_map_dead(&enabled_pg_map));
+
+        // 5. Map with path group state "disabled" but with an active path
+        let disabled_pg_map = MultipathMap {
+            name: "mpatha".to_string(),
+            uuid: "36004".to_string(),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("disabled".to_string()),
+                paths: Some(vec![MpathPath {
+                    dm_st: Some("active".to_string()),
+                }]),
+            }]),
+        };
+        assert!(!is_map_dead(&disabled_pg_map));
+
+        // 6. Map with path group state "undef"
+        let undef_pg_map = MultipathMap {
+            name: "mpatha".to_string(),
+            uuid: "36005".to_string(),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("undef".to_string()),
+                paths: Some(vec![MpathPath {
+                    dm_st: Some("active".to_string()),
+                }]),
+            }]),
+        };
+        assert!(!is_map_dead(&undef_pg_map));
     }
 
     #[test]
@@ -563,6 +615,32 @@ mod tests {
             }]),
         };
         assert!(is_map_dead(&inactive_pg_map));
+
+        // 6. Map with path group state "failed"
+        let failed_pg_map = MultipathMap {
+            name: "mpatha".to_string(),
+            uuid: "368f".to_string(),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("failed".to_string()),
+                paths: Some(vec![MpathPath {
+                    dm_st: Some("active".to_string()),
+                }]),
+            }]),
+        };
+        assert!(is_map_dead(&failed_pg_map));
+
+        // 7. Map with path state "faulty"
+        let faulty_path_map = MultipathMap {
+            name: "mpatha".to_string(),
+            uuid: "368g".to_string(),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("active".to_string()),
+                paths: Some(vec![MpathPath {
+                    dm_st: Some("faulty".to_string()),
+                }]),
+            }]),
+        };
+        assert!(is_map_dead(&faulty_path_map));
     }
 
     #[tokio::test]
