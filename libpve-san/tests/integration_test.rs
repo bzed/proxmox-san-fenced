@@ -65,9 +65,34 @@ fn run_library_test(node: &str) -> Result<SanStorageInfo, PveSanError> {
     let pvesh_mock_path = pvesh_mock_path();
     let test_data = test_data_dir();
 
-    // Set the environment variable so pvesh-mock can find the test data
-    // Note: We don't remove it here because the library spawns subprocesses that need it
-    // The test framework will clean up environment variables between tests
+    struct EnvGuard {
+        saved_vars: Vec<(String, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn new(keys: &[&str]) -> Self {
+            let mut saved_vars = Vec::new();
+            for key in keys {
+                let val = std::env::var(key).ok();
+                saved_vars.push((key.to_string(), val));
+            }
+            Self { saved_vars }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, val) in &self.saved_vars {
+                if let Some(v) = val {
+                    std::env::set_var(key, v);
+                } else {
+                    std::env::remove_var(key);
+                }
+            }
+        }
+    }
+
+    let _guard = EnvGuard::new(&["PVE_SAN_TEST_DATA_DIR"]);
     env::set_var("PVE_SAN_TEST_DATA_DIR", &test_data);
 
     let result = get_san_storage_info_sync_with_pvesh(node, pvesh_mock_path.to_str().unwrap());

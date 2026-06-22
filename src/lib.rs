@@ -694,14 +694,39 @@ mod tests {
         let pvesh_mock = pvesh_mock_path();
         let test_data = test_data_dir();
 
+        struct EnvGuard {
+            saved_vars: Vec<(String, Option<String>)>,
+        }
+
+        impl EnvGuard {
+            fn new(keys: &[&str]) -> Self {
+                let mut saved_vars = Vec::new();
+                for key in keys {
+                    let val = std::env::var(key).ok();
+                    saved_vars.push((key.to_string(), val));
+                }
+                Self { saved_vars }
+            }
+        }
+
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                for (key, val) in &self.saved_vars {
+                    if let Some(v) = val {
+                        std::env::set_var(key, v);
+                    } else {
+                        std::env::remove_var(key);
+                    }
+                }
+            }
+        }
+
         // Set the environment variables for mocking
+        let _guard = EnvGuard::new(&["PVE_SAN_TEST_DATA_DIR"]);
         env::set_var("PVE_SAN_TEST_DATA_DIR", &test_data);
 
         // Call discovery logic
         let result = discover_in_use_mpaths("pve001", pvesh_mock.to_str().unwrap()).await;
-
-        // Clean up
-        env::remove_var("PVE_SAN_TEST_DATA_DIR");
 
         let err = result.as_ref().err();
         assert!(result.is_ok(), "discover_in_use_mpaths failed: {err:?}");

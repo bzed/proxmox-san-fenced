@@ -77,6 +77,7 @@ fn run_pve_san_query(args: &[&str]) -> Vec<u8> {
         // Set PATH to include temp dir with our mock pvesh
         let path = env::var_os("PATH").unwrap();
         let new_path = format!("{}:{}", unique_temp.display(), path.to_string_lossy());
+        let _guard = EnvGuard::new(&["PATH", "PVE_SAN_TEST_DATA_DIR"]);
         env::set_var("PATH", new_path);
 
         // Set environment variable for pvesh-mock
@@ -91,8 +92,6 @@ fn run_pve_san_query(args: &[&str]) -> Vec<u8> {
 
         // Clean up
         fs::remove_dir_all(&unique_temp).ok();
-        env::remove_var("PATH");
-        env::remove_var("PVE_SAN_TEST_DATA_DIR");
 
         output.stdout
     }
@@ -163,6 +162,7 @@ fn test_pve_san_query_with_output_file() {
         // Set PATH to include temp dir with our mock pvesh
         let path = env::var_os("PATH").unwrap();
         let new_path = format!("{}:{}", unique_temp.display(), path.to_string_lossy());
+        let _guard = EnvGuard::new(&["PATH", "PVE_SAN_TEST_DATA_DIR"]);
         env::set_var("PATH", new_path);
 
         // Set environment variable for pvesh-mock
@@ -197,8 +197,6 @@ fn test_pve_san_query_with_output_file() {
 
         // Clean up the unique directory
         fs::remove_dir_all(&unique_temp).ok();
-        env::remove_var("PATH");
-        env::remove_var("PVE_SAN_TEST_DATA_DIR");
     }
 
     #[cfg(not(unix))]
@@ -227,4 +225,31 @@ fn test_pve_san_query_pretty_output() {
     // Should still be valid JSON
     let _data: serde_json::Value =
         serde_json::from_str(&json_output).expect("Pretty output should still be valid JSON");
+}
+
+struct EnvGuard {
+    saved_vars: Vec<(String, Option<std::ffi::OsString>)>,
+}
+
+impl EnvGuard {
+    fn new(keys: &[&str]) -> Self {
+        let mut saved_vars = Vec::new();
+        for key in keys {
+            let val = std::env::var_os(key);
+            saved_vars.push((key.to_string(), val));
+        }
+        Self { saved_vars }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, val) in &self.saved_vars {
+            if let Some(v) = val {
+                std::env::set_var(key, v);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+    }
 }

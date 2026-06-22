@@ -372,16 +372,40 @@ mod tests {
         assert_eq!(cli_default, expected_default);
 
         // Test environment variable overrides
+        struct EnvGuard {
+            saved_vars: Vec<(String, Option<String>)>,
+        }
+
+        impl EnvGuard {
+            fn new(keys: &[&str]) -> Self {
+                let mut saved_vars = Vec::new();
+                for key in keys {
+                    let val = std::env::var(key).ok();
+                    saved_vars.push((key.to_string(), val));
+                }
+                Self { saved_vars }
+            }
+        }
+
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                for (key, val) in &self.saved_vars {
+                    if let Some(v) = val {
+                        std::env::set_var(key, v);
+                    } else {
+                        std::env::remove_var(key);
+                    }
+                }
+            }
+        }
+
+        let _guard = EnvGuard::new(&["PVE_SAN_POLL_INTERVAL", "PVE_SAN_MAX_FAILURES", "PVE_SAN_TEST_MODE"]);
         std::env::set_var("PVE_SAN_POLL_INTERVAL", "15");
         std::env::set_var("PVE_SAN_MAX_FAILURES", "10");
         std::env::set_var("PVE_SAN_TEST_MODE", "true");
 
         let args_env = vec!["pve-san-fenced", "-n", "pve01", "--sysrq-char", "c"];
         let cli_env = Cli::try_parse_from(args_env).unwrap();
-
-        std::env::remove_var("PVE_SAN_POLL_INTERVAL");
-        std::env::remove_var("PVE_SAN_MAX_FAILURES");
-        std::env::remove_var("PVE_SAN_TEST_MODE");
 
         assert_eq!(cli_env.poll_interval, 15);
         assert_eq!(cli_env.max_failures, 10);
