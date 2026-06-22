@@ -542,23 +542,34 @@ impl PveSanClient {
 
     fn parse_size(size_str: &str) -> Option<u64> {
         let size_str = size_str.trim().to_uppercase();
+        const MAX_SIZE_BYTES: u64 = 100 * 1024 * 1024 * 1024 * 1024 * 1024; // 100 PB
 
         // Try to parse the number part, handling both integer and decimal values
         // Returns the numeric value in bytes
         fn parse_and_convert(num_str: &str, multiplier: u64) -> Option<u64> {
             // Try integer parse first
             if let Ok(n) = num_str.parse::<u64>() {
-                return Some(n * multiplier);
+                let bytes = n.saturating_mul(multiplier);
+                if bytes > MAX_SIZE_BYTES {
+                    return None;
+                }
+                return Some(bytes);
             }
             // Try decimal parse
             if let Ok(n) = num_str.parse::<f64>() {
-                // Convert to u64, truncating any fractional part
-                return Some((n * multiplier as f64) as u64);
+                if n < 0.0 || n.is_nan() || n.is_infinite() {
+                    return None;
+                }
+                let bytes_f = n * (multiplier as f64);
+                if bytes_f > MAX_SIZE_BYTES as f64 {
+                    return None;
+                }
+                return Some(bytes_f as u64);
             }
             None
         }
 
-        if size_str.ends_with("K") || size_str.ends_with("KB") {
+        let parsed = if size_str.ends_with("K") || size_str.ends_with("KB") {
             let num = size_str.trim_end_matches(['K', 'B']);
             parse_and_convert(num, 1024)
         } else if size_str.ends_with("M") || size_str.ends_with("MB") {
@@ -572,10 +583,22 @@ impl PveSanClient {
             parse_and_convert(num, 1024 * 1024 * 1024 * 1024)
         } else {
             // Try to parse as plain number (bytes)
-            size_str
-                .parse::<u64>()
-                .ok()
-                .or_else(|| size_str.parse::<f64>().ok().map(|n| n as u64))
+            if let Ok(n) = size_str.parse::<u64>() {
+                Some(n)
+            } else if let Ok(n) = size_str.parse::<f64>() {
+                if n < 0.0 || n.is_nan() || n.is_infinite() {
+                    None
+                } else {
+                    Some(n as u64)
+                }
+            } else {
+                None
+            }
+        };
+
+        match parsed {
+            Some(bytes) if bytes <= MAX_SIZE_BYTES => Some(bytes),
+            _ => None,
         }
     }
 }
@@ -645,6 +668,15 @@ mod tests {
         assert_eq!(PveSanClient::parse_size("1024K"), Some(1024 * 1024));
         assert_eq!(PveSanClient::parse_size("1048576"), Some(1048576));
         assert_eq!(PveSanClient::parse_size("invalid"), None);
+
+        // Test extreme inputs & overflow cases
+        assert_eq!(PveSanClient::parse_size("18446744073709551615G"), None);
+        assert_eq!(PveSanClient::parse_size("99999999999999999999G"), None);
+        assert_eq!(PveSanClient::parse_size("101PB"), None);
+
+        // Test negative-like values
+        assert_eq!(PveSanClient::parse_size("-1G"), None);
+        assert_eq!(PveSanClient::parse_size("-100"), None);
     }
 
     #[test]
