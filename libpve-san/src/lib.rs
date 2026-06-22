@@ -191,8 +191,14 @@ impl PveSanConfig {
         }
 
         let cmd = pvesh_command.unwrap_or("pvesh");
-        if cmd.is_empty() || !cmd.chars().all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '-' || c == '_') {
-            return Err(PveSanError::PveshError(format!("Invalid pvesh command path: {cmd}")));
+        if cmd.is_empty()
+            || !cmd
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '-' || c == '_')
+        {
+            return Err(PveSanError::PveshError(format!(
+                "Invalid pvesh command path: {cmd}"
+            )));
         }
 
         Ok(Self {
@@ -400,12 +406,11 @@ impl PveSanClient {
 
         for (key, value) in config_map {
             for prefix in &disk_prefixes {
-                if key.starts_with(prefix) {
-                    if key.len() == prefix.len() {
+                if let Some(index_str) = key.strip_prefix(prefix) {
+                    if index_str.is_empty() {
                         tracing::warn!("Unexpected disk key '{key}' without numeric index");
                         continue;
                     }
-                    let index_str = &key[prefix.len()..];
                     match index_str.parse::<u32>() {
                         Ok(index) => {
                             if index > 99 {
@@ -425,7 +430,9 @@ impl PveSanClient {
                             });
                         }
                         Err(_) => {
-                            tracing::warn!("Unexpected disk key '{key}' with non-numeric suffix '{index_str}'");
+                            tracing::warn!(
+                                "Unexpected disk key '{key}' with non-numeric suffix '{index_str}'"
+                            );
                         }
                     }
                 }
@@ -787,9 +794,18 @@ mod tests {
         );
         config_map.insert("status".to_string(), "running".to_string());
         // Insert invalid/excessive disk keys to test sanitization and warning paths
-        config_map.insert("scsi999".to_string(), "local-lvm:vm-100-disk-excessive,size=10G".to_string());
-        config_map.insert("scsi".to_string(), "local-lvm:vm-100-disk-missing-index,size=10G".to_string());
-        config_map.insert("scsiaux".to_string(), "local-lvm:vm-100-disk-invalid-index,size=10G".to_string());
+        config_map.insert(
+            "scsi999".to_string(),
+            "local-lvm:vm-100-disk-excessive,size=10G".to_string(),
+        );
+        config_map.insert(
+            "scsi".to_string(),
+            "local-lvm:vm-100-disk-missing-index,size=10G".to_string(),
+        );
+        config_map.insert(
+            "scsiaux".to_string(),
+            "local-lvm:vm-100-disk-invalid-index,size=10G".to_string(),
+        );
 
         let mut disks = client.extract_disks(&config_map).unwrap();
         assert_eq!(disks.len(), 3);

@@ -399,7 +399,11 @@ mod tests {
             }
         }
 
-        let _guard = EnvGuard::new(&["PVE_SAN_POLL_INTERVAL", "PVE_SAN_MAX_FAILURES", "PVE_SAN_TEST_MODE"]);
+        let _guard = EnvGuard::new(&[
+            "PVE_SAN_POLL_INTERVAL",
+            "PVE_SAN_MAX_FAILURES",
+            "PVE_SAN_TEST_MODE",
+        ]);
         std::env::set_var("PVE_SAN_POLL_INTERVAL", "15");
         std::env::set_var("PVE_SAN_MAX_FAILURES", "10");
         std::env::set_var("PVE_SAN_TEST_MODE", "true");

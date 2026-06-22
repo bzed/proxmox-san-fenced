@@ -128,7 +128,12 @@ pub async fn discover_in_use_mpaths(
         let lsblk_output: LsblkOutput = serde_json::from_str(&lsblk_json)?;
         let mut mpath_map = HashMap::new();
         if let Some(devices) = lsblk_output.blockdevices {
-            build_mpath_map(&devices, /*current_mpath*/ None, /*depth*/ 0, &mut mpath_map);
+            build_mpath_map(
+                &devices,
+                /*current_mpath*/ None,
+                /*depth*/ 0,
+                &mut mpath_map,
+            );
         }
         debug!("Built multipath-to-disk map: {:?}", mpath_map);
 
@@ -326,7 +331,8 @@ impl Fencer {
         }
 
         let monitored_names: HashSet<&String> = monitored_maps.iter().map(|m| &m.name).collect();
-        self.previous_map_states.retain(|name, _| monitored_names.contains(name));
+        self.previous_map_states
+            .retain(|name, _| monitored_names.contains(name));
 
         if monitored_maps.is_empty() {
             if self.consecutive_failures > 0 {
@@ -464,7 +470,12 @@ mod tests {
         ];
 
         let mut mpath_map = HashMap::new();
-        super::build_mpath_map(&devices, /*current_mpath*/ None, /*depth*/ 0, &mut mpath_map);
+        super::build_mpath_map(
+            &devices,
+            /*current_mpath*/ None,
+            /*depth*/ 0,
+            &mut mpath_map,
+        );
 
         // LV vm--104--disk--0 is spanned across mpatha and mpathb
         let mpaths_104 = mpath_map
@@ -504,7 +515,12 @@ mod tests {
         };
 
         let mut mpath_map = HashMap::new();
-        super::build_mpath_map(&[root], /*current_mpath*/ None, /*depth*/ 0, &mut mpath_map);
+        super::build_mpath_map(
+            &[root],
+            /*current_mpath*/ None,
+            /*depth*/ 0,
+            &mut mpath_map,
+        );
 
         // Innermost children (level 33 and beyond) should not be mapped
         assert!(!mpath_map.contains_key("level_34"));
@@ -1004,7 +1020,9 @@ mod tests {
     #[test]
     fn test_fencer_previous_map_states_pruning() {
         let mut fencer = Fencer::new(3, HashSet::new());
-        let mut active = vec!["mpatha".to_string(), "mpathb".to_string()].into_iter().collect();
+        let mut active = vec!["mpatha".to_string(), "mpathb".to_string()]
+            .into_iter()
+            .collect();
 
         let maps = vec![
             MultipathMap {

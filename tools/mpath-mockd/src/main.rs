@@ -306,7 +306,9 @@ fn create_abstract_socket(socket_path: &str) -> io::Result<i32> {
     }
 
     let normalized = socket_path.strip_prefix('@').unwrap_or(socket_path);
-    if normalized == "org/kernel/linux/storage/multipathd" || normalized == "/org/kernel/linux/storage/multipathd" {
+    if normalized == "org/kernel/linux/storage/multipathd"
+        || normalized == "/org/kernel/linux/storage/multipathd"
+    {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
             "Cannot bind to the real system multipathd socket path",

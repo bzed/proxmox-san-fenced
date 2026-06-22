@@ -626,5 +626,8 @@ fn test_daemon_refuses_system_socket() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert!(exited, "Daemon should have exited immediately");
-    assert!(!exit_status.unwrap().success(), "Daemon should have failed to start (non-zero exit code)");
+    assert!(
+        !exit_status.unwrap().success(),
+        "Daemon should have failed to start (non-zero exit code)"
+    );
 }

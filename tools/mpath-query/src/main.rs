@@ -161,7 +161,10 @@ fn validate_output_path(path: &str) -> Result<std::path::PathBuf, String> {
     let is_in_cwd = abs_path.starts_with(&cwd);
 
     if !is_in_tmp && !is_in_cwd {
-        return Err("Output path must be located within /tmp, /var/tmp, or the current working directory".to_string());
+        return Err(
+            "Output path must be located within /tmp, /var/tmp, or the current working directory"
+                .to_string(),
+        );
     }
 
     Ok(abs_path)
