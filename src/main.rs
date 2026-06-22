@@ -208,6 +208,18 @@ async fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
+    if cli.poll_interval == 0 {
+        error!("poll-interval cannot be 0");
+        std::process::exit(1);
+    }
+    if cli.max_failures == 0 {
+        error!("max-failures cannot be 0");
+        std::process::exit(1);
+    }
+    if cli.discovery_interval == 0 {
+        error!("discovery-interval cannot be 0");
+        std::process::exit(1);
+    }
     let base_dir =
         std::env::var("PVE_SAN_SYS_NODES_DIR").unwrap_or_else(|_| "/etc/pve/nodes".to_string());
     let node_dir = std::path::Path::new(&base_dir).join(&cli.node_name);

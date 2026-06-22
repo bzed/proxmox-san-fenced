@@ -190,11 +190,14 @@ impl PveSanConfig {
             return Err(PveSanError::NoNodeError);
         }
 
+        let cmd = pvesh_command.unwrap_or("pvesh");
+        if cmd.is_empty() || !cmd.chars().all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '-' || c == '_') {
+            return Err(PveSanError::PveshError(format!("Invalid pvesh command path: {cmd}")));
+        }
+
         Ok(Self {
             node,
-            pvesh_command: pvesh_command
-                .map(String::from)
-                .unwrap_or_else(|| "pvesh".to_string()),
+            pvesh_command: cmd.to_string(),
         })
     }
 
