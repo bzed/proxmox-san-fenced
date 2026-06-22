@@ -94,7 +94,14 @@ fn main() {
         Ok(data) => {
             match &cli.output {
                 Some(output_path) => {
-                    if let Err(e) = std::fs::write(output_path, &data) {
+                    let validated_path = match validate_output_path(output_path) {
+                        Ok(p) => p,
+                        Err(err) => {
+                            eprintln!("Invalid output path: {err}");
+                            process::exit(1);
+                        }
+                    };
+                    if let Err(e) = std::fs::write(&validated_path, &data) {
                         eprintln!("Error writing to file '{}': {}", output_path, e);
                         process::exit(1);
                     }
@@ -128,4 +135,34 @@ fn main() {
             process::exit(1);
         }
     }
+}
+
+fn validate_output_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let p = std::path::Path::new(path);
+    if p == std::path::Path::new("/dev/null") {
+        return Ok(p.to_path_buf());
+    }
+    let abs_path = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {e}"))?
+            .join(p)
+    };
+
+    for component in abs_path.components() {
+        if let std::path::Component::ParentDir = component {
+            return Err("Path traversal (..) is not allowed in output path".to_string());
+        }
+    }
+
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let is_in_tmp = abs_path.starts_with("/tmp") || abs_path.starts_with("/var/tmp");
+    let is_in_cwd = abs_path.starts_with(&cwd);
+
+    if !is_in_tmp && !is_in_cwd {
+        return Err("Output path must be located within /tmp, /var/tmp, or the current working directory".to_string());
+    }
+
+    Ok(abs_path)
 }
