@@ -61,8 +61,13 @@ struct MpathPath {
 fn build_mpath_map(
     devices: &[LsblkDevice],
     current_mpath: Option<&str>,
+    depth: u32,
     map: &mut HashMap<String, HashSet<String>>,
 ) {
+    if depth > 32 {
+        warn!("Exceeded maximum recursion depth of 32 in build_mpath_map");
+        return;
+    }
     for dev in devices {
         let next_mpath = if dev.device_type == "mpath" {
             Some(dev.name.as_str())
@@ -77,7 +82,7 @@ fn build_mpath_map(
         }
 
         if let Some(children) = &dev.children {
-            build_mpath_map(children, next_mpath, map);
+            build_mpath_map(children, next_mpath, depth + 1, map);
         }
     }
 }
@@ -123,7 +128,7 @@ pub async fn discover_in_use_mpaths(
         let lsblk_output: LsblkOutput = serde_json::from_str(&lsblk_json)?;
         let mut mpath_map = HashMap::new();
         if let Some(devices) = lsblk_output.blockdevices {
-            build_mpath_map(&devices, /*current_mpath*/ None, &mut mpath_map);
+            build_mpath_map(&devices, /*current_mpath*/ None, /*depth*/ 0, &mut mpath_map);
         }
         debug!("Built multipath-to-disk map: {:?}", mpath_map);
 
@@ -459,7 +464,7 @@ mod tests {
         ];
 
         let mut mpath_map = HashMap::new();
-        super::build_mpath_map(&devices, /*current_mpath*/ None, &mut mpath_map);
+        super::build_mpath_map(&devices, /*current_mpath*/ None, /*depth*/ 0, &mut mpath_map);
 
         // LV vm--104--disk--0 is spanned across mpatha and mpathb
         let mpaths_104 = mpath_map
@@ -474,6 +479,38 @@ mod tests {
             .unwrap();
         assert_eq!(mpaths_116.len(), 1);
         assert!(mpaths_116.contains("mpatha"));
+    }
+
+    #[test]
+    fn test_build_mpath_map_recursion_limit() {
+        // Construct a deeply nested structure (35 levels)
+        let mut root = LsblkDevice {
+            name: "level_35".to_string(),
+            device_type: "lvm".to_string(),
+            children: None,
+        };
+        for i in (1..35).rev() {
+            root = LsblkDevice {
+                name: format!("level_{i}"),
+                device_type: "lvm".to_string(),
+                children: Some(vec![root]),
+            };
+        }
+        // Root is level_0 (mpath)
+        let root = LsblkDevice {
+            name: "level_0".to_string(),
+            device_type: "mpath".to_string(),
+            children: Some(vec![root]),
+        };
+
+        let mut mpath_map = HashMap::new();
+        super::build_mpath_map(&[root], /*current_mpath*/ None, /*depth*/ 0, &mut mpath_map);
+
+        // Innermost children (level 33 and beyond) should not be mapped
+        assert!(!mpath_map.contains_key("level_34"));
+        assert!(!mpath_map.contains_key("level_33"));
+        // level_32 (depth 32) should be mapped
+        assert!(mpath_map.contains_key("level_32"));
     }
 
     #[test]
