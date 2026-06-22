@@ -994,6 +994,10 @@ mod tests {
             nested.push_str("]}");
         }
         assert!(!fencer.update(&nested, &active));
+
+        // 3. Check invalid JSON / binary garbage response
+        assert!(!fencer.update("invalid json", &active));
+        assert!(!fencer.update("\u{FFFD}\u{FFFD}\u{FFFD}", &active));
     }
 
     #[test]
