@@ -296,9 +296,11 @@ async fn main() {
         let cf = fencer.consecutive_failures();
         let mf = fencer.max_failures();
         debug!("Fencer monitoring state: consecutive_failures={cf}, max_failures={mf}");
-        let active_set = active_luns.read().await;
-        let active_ref = &*active_set;
-        debug!("Current active LUNs set: {active_ref:?}");
+        let active_set = {
+            let lock = active_luns.read().await;
+            lock.clone()
+        };
+        debug!("Current active LUNs set: {active_set:?}");
 
         // Query multipathd
         let response =

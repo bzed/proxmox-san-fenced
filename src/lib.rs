@@ -320,6 +320,9 @@ impl Fencer {
             }
         }
 
+        let monitored_names: HashSet<&String> = monitored_maps.iter().map(|m| &m.name).collect();
+        self.previous_map_states.retain(|name, _| monitored_names.contains(name));
+
         if monitored_maps.is_empty() {
             if self.consecutive_failures > 0 {
                 info!("No active maps monitored. Resetting failure counter.");
@@ -934,5 +937,45 @@ mod tests {
         }];
         fencer.update_with_maps(&maps, &active);
         assert_eq!(fencer.consecutive_failures(), u64::MAX);
+    }
+
+    #[test]
+    fn test_fencer_previous_map_states_pruning() {
+        let mut fencer = Fencer::new(3, HashSet::new());
+        let mut active = vec!["mpatha".to_string(), "mpathb".to_string()].into_iter().collect();
+
+        let maps = vec![
+            MultipathMap {
+                name: "mpatha".to_string(),
+                uuid: "uuid-a".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("active".to_string()),
+                    }]),
+                }]),
+            },
+            MultipathMap {
+                name: "mpathb".to_string(),
+                uuid: "uuid-b".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("active".to_string()),
+                    }]),
+                }]),
+            },
+        ];
+
+        // First update: should have both mpatha and mpathb in previous_map_states
+        fencer.update_with_maps(&maps, &active);
+        assert!(fencer.previous_map_states.contains_key("mpatha"));
+        assert!(fencer.previous_map_states.contains_key("mpathb"));
+
+        // Second update: remove mpathb from active_luns, it should be pruned from previous_map_states
+        active.remove("mpathb");
+        fencer.update_with_maps(&maps, &active);
+        assert!(fencer.previous_map_states.contains_key("mpatha"));
+        assert!(!fencer.previous_map_states.contains_key("mpathb"));
     }
 }
