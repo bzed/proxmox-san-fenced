@@ -263,6 +263,12 @@ impl Fencer {
     /// Evaluates the current state of multipath maps against the active LUN set by parsing a JSON response.
     /// Returns true if fencing should be triggered.
     pub fn update(&mut self, response_json: &str, active_luns: &HashSet<String>) -> bool {
+        // Limit JSON size to 10 MB to prevent memory exhaustion DoS
+        if response_json.len() > 10 * 1024 * 1024 {
+            warn!("Rejected multipathd response: size exceeds 10MB limit");
+            return false;
+        }
+
         let output: MultipathOutput = match serde_json::from_str(response_json) {
             Ok(out) => out,
             Err(e) => {
@@ -337,7 +343,7 @@ impl Fencer {
         );
 
         if all_paths_dead {
-            self.consecutive_failures += 1;
+            self.consecutive_failures = self.consecutive_failures.saturating_add(1);
             let cf = self.consecutive_failures;
             let mf = self.max_failures;
             warn!("Consecutive storage failure: {cf}/{mf}");
@@ -885,5 +891,48 @@ mod tests {
         ];
 
         run_scenario(/*max_failures*/ 3, &[], &steps);
+    }
+
+    #[test]
+    fn test_fencer_update_large_json_and_recursion() {
+        let mut fencer = Fencer::new(3, HashSet::new());
+        let active = HashSet::new();
+
+        // 1. Check size limit (> 10MB)
+        let large_str = " ".repeat(10 * 1024 * 1024 + 1);
+        assert!(!fencer.update(&large_str, &active));
+
+        // 2. Check recursion limit
+        // Deeply nested JSON array/objects to exceed default 128 level limit
+        let mut nested = String::new();
+        for _ in 0..150 {
+            nested.push_str("{\"maps\":[");
+        }
+        nested.push_str("{}");
+        for _ in 0..150 {
+            nested.push_str("]}");
+        }
+        assert!(!fencer.update(&nested, &active));
+    }
+
+    #[test]
+    fn test_fencer_consecutive_failures_overflow() {
+        let mut fencer = Fencer::new(3, HashSet::new());
+        fencer.consecutive_failures = u64::MAX;
+
+        // Trigger one failure cycle to verify it saturates instead of overflowing/wrapping
+        let active = vec!["mpathb".to_string()].into_iter().collect();
+        let maps = vec![MultipathMap {
+            name: "mpathb".to_string(),
+            uuid: "368f".to_string(),
+            path_groups: Some(vec![PathGroup {
+                dm_st: Some("failed".to_string()),
+                paths: Some(vec![MpathPath {
+                    dm_st: Some("failed".to_string()),
+                }]),
+            }]),
+        }];
+        fencer.update_with_maps(&maps, &active);
+        assert_eq!(fencer.consecutive_failures(), u64::MAX);
     }
 }
