@@ -768,7 +768,7 @@ test-data/
 - `--socket` (default: `DEFAULT_SOCKET` from libmultipath): Multipath socket to connect to.
 - `--node` (required): The name of the Proxmox node to query for VM data.
 - `--test-mode` / `-t` (optional, flag): Runs in test mode (only logs changes and decisions, does not trigger reboot/fencing).
-- `--sysrq-char` (default: `b`): The character to write to `/proc/sysrq-trigger`. `b` reboots immediately (recommended for fast HA fencing), while `c` causes a kernel panic (useful for debugging, but delays reboot if kdump is active).
+- `--sysrq-char` / `--sysrq-chars` (default: `s,b`): A comma-separated list of letters to write sequentially to `/proc/sysrq-trigger`. For example, `s,b` triggers a filesystem sync followed by an immediate reboot. For each `s` (sync) in the list, the daemon sleeps for 2 seconds to wait for the sync to happen.
 
 **Data Structures**:
 
@@ -838,13 +838,10 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
             The loop will then continue normal monitoring without executing the panic or reboot.
           - If **not active**, execute the fencing sequence:
             1. Log critical: `"SAN FENCER: Total persistent storage loss detected. Threshold met."`
-             2. Log critical: `"SAN FENCER: Initiating filesystem sync..."`
-             3. Sync filesystems to flush any memory buffers for local storage (OS disk) using `std::process::Command::new("sync").status()`.
-             4. Wait 2 seconds using `tokio::time::sleep(std::time::Duration::from_secs(2)).await`.
-            5. Log critical: `"SAN FENCER: Triggering SysRq Fencing NOW."`
-            6. Trigger Fencing:
-               - Attempt to write the configured `--sysrq-char` (default `"b"`) to `/proc/sysrq-trigger` using `tokio::fs::write`.
-               - If it fails, log the error and aggressively attempt to write `"b"` as a fallback to ensure the node reboots.
+            2. Parse the comma-separated list of SysRq characters.
+            3. Write each character in the sequence sequentially to `/proc/sysrq-trigger`.
+            4. If a character is `'s'`, sleep for 2 seconds to wait for the sync to complete.
+            5. If the sequence does not include or trigger a reboot via `'b'`, attempt to write `"b"` as a fallback to ensure the node reboots.
 
 **Testing**:
 - Use `mpath-mockd` as a test double to simulate multipathd responses.
