@@ -71,8 +71,13 @@ struct Cli {
     #[arg(long, short = 't', env = "PVE_SAN_TEST_MODE")]
     test_mode: bool,
 
-    /// The character to write to /proc/sysrq-trigger (default: b for immediate reboot, c for panic)
-    #[arg(long, env = "PVE_SAN_SYSRQ_CHAR", default_value = "b")]
+    /// The character(s) to write to /proc/sysrq-trigger (default: s,b for sync followed by reboot)
+    #[arg(
+        long = "sysrq-char",
+        alias = "sysrq-chars",
+        env = "PVE_SAN_SYSRQ_CHAR",
+        default_value = "s,b"
+    )]
     sysrq_char: String,
 }
 
@@ -164,10 +169,30 @@ fn check_multipath_config(config_str: &str) -> Vec<String> {
     warnings
 }
 
-fn validate_sysrq(sysrq_char: &str) {
+fn sysrq_char_to_bit(c: char) -> Option<i32> {
+    match c {
+        's' => Some(16),
+        'b' | 'o' => Some(128),
+        'c' => Some(2),
+        'u' => Some(32),
+        'r' => Some(4),
+        'e' | 'i' | 'f' => Some(64),
+        't' | 'p' | 'm' | 'w' => Some(8),
+        _ => None,
+    }
+}
+
+fn validate_sysrq(sysrq_chars: &str) {
     if std::env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
         return;
     }
+
+    let chars: Vec<char> = sysrq_chars
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .flat_map(str::chars)
+        .collect();
 
     let sysrq_path = "/proc/sys/kernel/sysrq";
     match std::fs::read_to_string(sysrq_path) {
@@ -177,14 +202,15 @@ fn validate_sysrq(sysrq_char: &str) {
                 Ok(val) => {
                     if val == 0 {
                         warn!("CRITICAL: SysRq is disabled (value is 0) in {sysrq_path}. Fencing operations will fail!");
-                    } else {
-                        let allowed = match sysrq_char {
-                            "b" => val == 1 || (val & 128) != 0,
-                            "c" => val == 1 || (val & 2) != 0,
-                            _ => val == 1,
-                        };
-                        if !allowed {
-                            warn!("CRITICAL: Configured SysRq char '{sysrq_char}' might be disabled by {sysrq_path} bitmask ({val_str})!");
+                    } else if val != 1 {
+                        for c in chars {
+                            if let Some(bit) = sysrq_char_to_bit(c) {
+                                if (val & bit) == 0 {
+                                    warn!("CRITICAL: Configured SysRq char '{c}' is disabled by {sysrq_path} bitmask ({val_str})!");
+                                }
+                            } else {
+                                warn!("WARNING: Unknown SysRq character '{c}' might be restricted by {sysrq_path} bitmask ({val_str}).");
+                            }
                         }
                     }
                 }
@@ -329,6 +355,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_sysrq_char_to_bit() {
+        assert_eq!(sysrq_char_to_bit('s'), Some(16));
+        assert_eq!(sysrq_char_to_bit('b'), Some(128));
+        assert_eq!(sysrq_char_to_bit('o'), Some(128));
+        assert_eq!(sysrq_char_to_bit('c'), Some(2));
+        assert_eq!(sysrq_char_to_bit('u'), Some(32));
+        assert_eq!(sysrq_char_to_bit('r'), Some(4));
+        assert_eq!(sysrq_char_to_bit('e'), Some(64));
+        assert_eq!(sysrq_char_to_bit('i'), Some(64));
+        assert_eq!(sysrq_char_to_bit('f'), Some(64));
+        assert_eq!(sysrq_char_to_bit('t'), Some(8));
+        assert_eq!(sysrq_char_to_bit('p'), Some(8));
+        assert_eq!(sysrq_char_to_bit('m'), Some(8));
+        assert_eq!(sysrq_char_to_bit('w'), Some(8));
+        assert_eq!(sysrq_char_to_bit('x'), None);
+    }
+
+    #[test]
     fn test_cli_parsing() {
         let args = vec!["pve-san-fenced", "-n", "pve01", "-t", "--sysrq-char", "c"];
         let cli = Cli::try_parse_from(args).unwrap();
@@ -344,6 +388,14 @@ mod tests {
             sysrq_char: "c".to_string(),
         };
         assert_eq!(cli, expected);
+
+        let args_alias = vec!["pve-san-fenced", "-n", "pve01", "-t", "--sysrq-chars", "s,b,c"];
+        let cli_alias = Cli::try_parse_from(args_alias).unwrap();
+        assert_eq!(cli_alias.sysrq_char, "s,b,c");
+
+        let args_no_sysrq = vec!["pve-san-fenced", "-n", "pve01", "-t"];
+        let cli_no_sysrq = Cli::try_parse_from(args_no_sysrq).unwrap();
+        assert_eq!(cli_no_sysrq.sysrq_char, "s,b");
 
         let args2 = vec![
             "pve-san-fenced",

@@ -210,31 +210,44 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
     }
 }
 
-/// Executes the fencing sequence
 #[tracing::instrument]
 pub async fn trigger_fencing(sysrq_char: &str) {
     warn!("SAN FENCER: Total persistent storage loss detected. Threshold met.");
-    warn!("SAN FENCER: Initiating filesystem sync...");
-
-    // Sync filesystems
-    let _ = std::process::Command::new("sync").status();
-    tokio::time::sleep(Duration::from_secs(/*secs*/ 2)).await;
 
     if env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
         warn!("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon.");
         std::process::exit(/*code*/ 0);
     }
 
-    warn!("SAN FENCER: Triggering SysRq Fencing NOW.");
+    let chars: Vec<char> = sysrq_char
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .flat_map(str::chars)
+        .collect();
 
-    // Attempt fencing with configured sysrq character
-    if let Err(e) = tokio::fs::write("/proc/sysrq-trigger", sysrq_char).await {
-        error!("Failed to write '{sysrq_char}' to sysrq-trigger: {e}");
-        // Fallback to reboot if the primary character wasn't already 'b'
-        if sysrq_char != "b" {
-            if let Err(err) = tokio::fs::write("/proc/sysrq-trigger", "b").await {
-                error!("Failed to write 'b' to sysrq-trigger: {err}");
-            }
+    warn!("SAN FENCER: Triggering SysRq Fencing sequence: {chars:?}");
+
+    let mut sent_reboot = false;
+    for &c in &chars {
+        warn!("SAN FENCER: Sending SysRq '{c}' to sysrq-trigger");
+        if let Err(e) = tokio::fs::write("/proc/sysrq-trigger", c.to_string()).await {
+            error!("Failed to write '{c}' to sysrq-trigger: {e}");
+        } else if c == 'b' {
+            sent_reboot = true;
+        }
+
+        if c == 's' {
+            warn!("SAN FENCER: Waiting for sync to complete...");
+            tokio::time::sleep(Duration::from_secs(/*secs*/ 2)).await;
+        }
+    }
+
+    // Fallback to reboot if 'b' was not sent/attempted
+    if !sent_reboot {
+        warn!("SAN FENCER: Sequence did not contain 'b' or failed to reboot. Attempting fallback reboot ('b')...");
+        if let Err(err) = tokio::fs::write("/proc/sysrq-trigger", "b").await {
+            error!("Failed to write fallback 'b' to sysrq-trigger: {err}");
         }
     }
 }
