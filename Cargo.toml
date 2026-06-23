@@ -15,7 +15,6 @@ serde_json = { workspace = true }
 log = "0.4"
 env_logger = "0.10"
 clap = { workspace = true }
-libc = { workspace = true }
 tracing = { workspace = true }
 
 [workspace]
@@ -23,7 +22,6 @@ members = ["libmultipath", "libpve-san", "tools/mpath-query", "tools/mpath-mockd
 resolver = "2"
 
 [workspace.dependencies]
-libc = "0.2"
 clap = { version = "4.0", features = ["derive", "env"] }
 lsblk = "0.6.1"
 serde = { version = "1.0", features = ["derive"] }

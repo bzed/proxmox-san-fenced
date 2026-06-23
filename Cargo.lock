@@ -186,9 +186,6 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libmultipath"
 version = "0.1.0"
-dependencies = [
- "libc",
-]
 
 [[package]]
 name = "libpve-san"
@@ -241,7 +238,6 @@ name = "mpath-mockd"
 version = "0.1.0"
 dependencies = [
  "clap",
- "libc",
  "serde",
  "serde_json",
 ]
@@ -293,7 +289,6 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "env_logger",
- "libc",
  "libmultipath",
  "libpve-san",
  "log",
