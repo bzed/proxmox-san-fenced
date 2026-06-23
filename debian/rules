@@ -1,11 +1,15 @@
 #!/usr/bin/make -f
 export DH_VERBOSE = 1
 
+export CARGO_HOME = $(CURDIR)/.cargo_home
+export RUSTUP_HOME = $(CURDIR)/.rustup_home
+export PATH := $(CURDIR)/.cargo_home/bin:$(PATH)
+
 %:
 	dh $@
 
 override_dh_auto_configure:
-	# No-op
+	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
 
 override_dh_auto_build:
 	cargo build --release --workspace
@@ -27,4 +31,6 @@ override_dh_auto_install:
 	install -D -m 0644 man/pve-san-query.1 $(CURDIR)/debian/pve-san-fenced/usr/share/man/man1/pve-san-query.1
 
 override_dh_auto_clean:
-	cargo clean
+	if [ -d .cargo_home ]; then cargo clean; fi
+	rm -rf .cargo_home .rustup_home
+
