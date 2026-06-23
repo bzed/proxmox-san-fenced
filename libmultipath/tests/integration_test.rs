@@ -1,6 +1,13 @@
 //! Integration tests for libmultipath.
 //!
 //! These tests verify communication with a mock multipathd daemon.
+//!
+//! Copyright (C) 2026 Bernd Zeimetz <bernd@bzed.de>
+//!
+//! This program is free software: you can redistribute it and/or modify
+//! it under the terms of the GNU Affero General Public License as published by
+//! the Free Software Foundation, either version 3 of the License, or
+//! (at your option) any later version.
 
 use libc::{
     accept, bind, close, listen, setsockopt, sockaddr_un, socket, AF_UNIX, SOCK_STREAM, SOL_SOCKET,

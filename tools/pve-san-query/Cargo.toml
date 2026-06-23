@@ -2,6 +2,9 @@
 name = "pve-san-query"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-or-later"
+authors = ["Bernd Zeimetz <bernd@bzed.de>"]
+
 
 [dependencies]
 libpve-san = { path = "../../libpve-san" }
