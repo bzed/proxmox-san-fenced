@@ -217,9 +217,7 @@ pub async fn trigger_fencing(sysrq_char: &str) {
     warn!("SAN FENCER: Initiating filesystem sync...");
 
     // Sync filesystems
-    unsafe {
-        libc::sync();
-    }
+    let _ = std::process::Command::new("sync").status();
     tokio::time::sleep(Duration::from_secs(/*secs*/ 2)).await;
 
     if env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
