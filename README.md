@@ -18,7 +18,7 @@ The project consists of the following components:
 
 1. **Discovery Phase**: On startup and at configurable intervals (default: 60 seconds), `pve-san-fenced` queries running VMs using `libpve-san` and discovers which multipath WWIDs are actively used.
 2. **Monitoring Phase**: At regular intervals (default: 5 seconds), it queries `multipathd` to get the path state of the monitored WWIDs.
-3. **Fencing Mechanism**: If all paths for any monitored WWID are down (i.e. state is `faulty`, `failed`, or `offline`) consecutively for a predefined threshold (default: 6 failures), the daemon immediately writes a character (default: `b` for reboot) to `/proc/sysrq-trigger` to fence the node.
+3. **Fencing Mechanism**: If all paths for any monitored WWID are down (i.e. state is `faulty`, `failed`, or `offline`) consecutively for a predefined threshold (default: 6 failures), the daemon immediately writes the configured SysRq sequence (default: `s,b` for sync followed by reboot) to `/proc/sysrq-trigger` to fence the node.
 
 ## Installation & Configuration
 
@@ -50,7 +50,7 @@ Configuration options can be customized in `/etc/default/pve-san-fenced`:
 - `PVE_SAN_MAX_FAILURES`: Number of consecutive failures before fencing (default: 6).
 - `PVE_SAN_SOCKET`: Path to the `multipathd` abstract socket (default: `@/org/kernel/linux/storage/multipathd`).
 - `PVE_SAN_NODE_NAME`: The name of the local Proxmox VE node (default: system hostname).
-- `PVE_SAN_SYSRQ_CHAR`: SysRq command (default: `b` for reboot, `c` for crash dump).
+- `PVE_SAN_SYSRQ_CHAR`: Comma-separated list of SysRq characters to send sequentially (default: `s,b` for sync followed by reboot. A sync `'s'` causes a 2-second sleep).
 - `PVE_SAN_TEST_MODE`: Run in test/dry-run mode without actually writing to SysRq (default: empty).
 
 ## Development and Testing

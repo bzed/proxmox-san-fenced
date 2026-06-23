@@ -10,7 +10,7 @@ pve-san-fenced \- SAN fencing daemon for Proxmox VE
 [\fB\-\-socket\fR \fIpath\fR]
 [\fB\-\-node\-name\fR \fIname\fR]
 [\fB\-\-pvesh\-command\fR \fIcommand\fR]
-[\fB\-\-sysrq\-char\fR \fIchar\fR]
+[\fB\-\-sysrq\-char\fR|\fB\-\-sysrq\-chars\fR \fIsequence\fR]
 [\fB\-t\fR | \fB\-\-test\-mode\fR]
 .SH DESCRIPTION
 .B pve-san-fenced
@@ -38,8 +38,8 @@ The name of the local Proxmox VE node. Default is the local hostname. Must exist
 .BI \-\-pvesh\-command " command"
 Command or path to use for Proxmox VE API queries. Default is "pvesh".
 .TP
-.BI \-\-sysrq\-char " char"
-The character to write to /proc/sysrq-trigger when fencing. Default is "b" (reboot). "c" can be used for immediate kernel crash/panic.
+.BI \-\-sysrq\-char ", " \-\-sysrq\-chars " sequence"
+Comma-separated list of characters to write to /proc/sysrq-trigger when fencing. Default is "s,b" (sync followed by reboot). Any sync ('s') triggers a 2-second sleep to wait for the sync to complete.
 .TP
 .B \-t ", " \-\-test\-mode
 Run the daemon in test/dry-run mode. Fencing decisions and transitions are logged, but the reboot/panic is not triggered.
@@ -67,14 +67,14 @@ Command or path to use for Proxmox VE API queries. Corresponds to \fB\-\-pvesh\-
 If set (to a non-empty, non-false value), runs the daemon in test/dry-run mode. Corresponds to \fB\-t\fR, \fB\-\-test\-mode\fR.
 .TP
 .B PVE_SAN_SYSRQ_CHAR
-The character to write to /proc/sysrq-trigger when fencing. Corresponds to \fB\-\-sysrq\-char\fR.
+Comma-separated list of characters to write to /proc/sysrq-trigger when fencing. Corresponds to \fB\-\-sysrq\-char\fR / \fB\-\-sysrq\-chars\fR.
 .TP
 .B PVE_SAN_FENCE_DRY_RUN
 If set, the daemon acts as if running in test mode internally and exits instead of writing to the SysRq trigger.
 .SH FILES
 .TP
 .I /proc/sys/kernel/sysrq
-Used to verify if the configured SysRq character is enabled by the system's SysRq bitmask.
+Used to verify at startup if the configured SysRq character(s) are allowed by the system's SysRq bitmask.
 .TP
 .I /proc/sysrq-trigger
 Written to trigger fencing.
