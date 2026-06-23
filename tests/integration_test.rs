@@ -416,3 +416,46 @@ fn test_integration_disabled_pg_active_path_stable() {
     assert!(!full_logs.contains("Consecutive storage failure"));
     assert!(!full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
 }
+
+#[test]
+fn test_integration_invalid_sysrq_chars() {
+    let mut ctx = TestContext::new("invalid_sysrq_chars", "pve001");
+
+    // Start mock daemon to avoid query connection failure logging
+    start_mockd(&mut ctx, "show maps json=all_active_running.json");
+
+    // Start fencer daemon with an invalid sysrq-char 'x'
+    start_fencer(&mut ctx, "pve001", &["--sysrq-char", "s,b,x"]);
+
+    let mut fencer = ctx
+        .target_daemon
+        .take()
+        .expect("Fencer process not tracked");
+
+    let start = std::time::Instant::now();
+    let mut exit_status = None;
+    while start.elapsed() < Duration::from_secs(5) {
+        if let Some(status) = fencer.try_wait().unwrap() {
+            exit_status = Some(status);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let status = exit_status.expect("Fencer did not exit after invalid configuration");
+    assert_eq!(
+        status.code(),
+        Some(1),
+        "Expected exit status 1 for invalid configuration, got: {status:?}"
+    );
+
+    let output = fencer.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+
+    assert!(
+        full_logs.contains("Configuration error: Invalid SysRq character 'x' specified in configuration"),
+        "Logs did not contain expected error: {full_logs}"
+    );
+}

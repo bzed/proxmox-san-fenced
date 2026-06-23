@@ -182,17 +182,27 @@ fn sysrq_char_to_bit(c: char) -> Option<i32> {
     }
 }
 
-fn validate_sysrq(sysrq_chars: &str) {
-    if std::env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
-        return;
-    }
-
+fn validate_sysrq(sysrq_chars: &str) -> Result<(), String> {
     let chars: Vec<char> = sysrq_chars
         .split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .flat_map(str::chars)
         .collect();
+
+    if chars.is_empty() {
+        return Err("sysrq-char configuration cannot be empty".to_string());
+    }
+
+    for &c in &chars {
+        if sysrq_char_to_bit(c).is_none() {
+            return Err(format!("Invalid SysRq character '{c}' specified in configuration"));
+        }
+    }
+
+    if std::env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
+        return Ok(());
+    }
 
     let sysrq_path = "/proc/sys/kernel/sysrq";
     match std::fs::read_to_string(sysrq_path) {
@@ -208,8 +218,6 @@ fn validate_sysrq(sysrq_chars: &str) {
                                 if (val & bit) == 0 {
                                     warn!("CRITICAL: Configured SysRq char '{c}' is disabled by {sysrq_path} bitmask ({val_str})!");
                                 }
-                            } else {
-                                warn!("WARNING: Unknown SysRq character '{c}' might be restricted by {sysrq_path} bitmask ({val_str}).");
                             }
                         }
                     }
@@ -223,6 +231,8 @@ fn validate_sysrq(sysrq_chars: &str) {
             warn!("Failed to read {sysrq_path}: {e}. Unable to verify SysRq state.");
         }
     }
+
+    Ok(())
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -270,7 +280,10 @@ async fn main() {
         }
     }
 
-    validate_sysrq(&cli.sysrq_char);
+    if let Err(e) = validate_sysrq(&cli.sysrq_char) {
+        error!("Configuration error: {e}");
+        std::process::exit(1);
+    }
 
     let active_luns = Arc::new(RwLock::new(HashSet::new()));
 
@@ -370,6 +383,21 @@ mod tests {
         assert_eq!(sysrq_char_to_bit('m'), Some(8));
         assert_eq!(sysrq_char_to_bit('w'), Some(8));
         assert_eq!(sysrq_char_to_bit('x'), None);
+    }
+
+    #[test]
+    fn test_validate_sysrq_characters() {
+        // Valid scenarios
+        assert!(validate_sysrq("s,b").is_ok());
+        assert!(validate_sysrq("c").is_ok());
+        assert!(validate_sysrq("s,b,u").is_ok());
+
+        // Invalid scenarios
+        assert!(validate_sysrq("x").is_err());
+        assert!(validate_sysrq("s,b,x").is_err());
+        assert!(validate_sysrq("s,b,@").is_err());
+        assert!(validate_sysrq("").is_err());
+        assert!(validate_sysrq(",,").is_err());
     }
 
     #[test]
