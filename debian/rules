@@ -1,0 +1,30 @@
+#!/usr/bin/make -f
+export DH_VERBOSE = 1
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	# No-op
+
+override_dh_auto_build:
+	cargo build --release --workspace
+
+override_dh_auto_test:
+	mkdir -p target/debug
+	for bin in pve-san-fenced mpath-query pve-san-query mpath-mockd pvesh-mock; do \
+		ln -sf ../release/$$bin target/debug/$$bin; \
+	done
+	cargo test --release --workspace
+
+override_dh_auto_install:
+	install -D -m 0755 target/release/pve-san-fenced $(CURDIR)/debian/pve-san-fenced/usr/sbin/pve-san-fenced
+	install -D -m 0755 target/release/mpath-query $(CURDIR)/debian/pve-san-fenced/usr/bin/mpath-query
+	install -D -m 0755 target/release/pve-san-query $(CURDIR)/debian/pve-san-fenced/usr/bin/pve-san-query
+	# Install man pages
+	install -D -m 0644 man/pve-san-fenced.8 $(CURDIR)/debian/pve-san-fenced/usr/share/man/man8/pve-san-fenced.8
+	install -D -m 0644 man/mpath-query.1 $(CURDIR)/debian/pve-san-fenced/usr/share/man/man1/mpath-query.1
+	install -D -m 0644 man/pve-san-query.1 $(CURDIR)/debian/pve-san-fenced/usr/share/man/man1/pve-san-query.1
+
+override_dh_auto_clean:
+	cargo clean

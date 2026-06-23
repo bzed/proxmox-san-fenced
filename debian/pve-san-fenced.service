@@ -1,0 +1,15 @@
+[Unit]
+Description=Proxmox VE SAN Fencing Daemon
+Documentation=man:pve-san-fenced(8)
+After=network.target multipathd.service
+Requires=multipathd.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/pve-san-fenced
+ExecStart=/usr/sbin/pve-san-fenced
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+# Configuration for pve-san-fenced daemon
+
+# Poll interval in seconds
+# PVE_SAN_POLL_INTERVAL=5
+
+# Maximum consecutive failures before fencing
+# PVE_SAN_MAX_FAILURES=6
+
+# Discovery interval in seconds
+# PVE_SAN_DISCOVERY_INTERVAL=60
+
+# Multipathd socket path
+# PVE_SAN_SOCKET=/org/kernel/linux/storage/multipathd
+
+# SysRq character to trigger fencing (default is 'c' for crash/panic)
+# PVE_SAN_SYSRQ_CHAR=c
+
+# Set to true to run in test/dry-run mode (does not trigger SysRq kernel panic)
+# PVE_SAN_TEST_MODE=false

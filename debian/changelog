@@ -1,0 +1,5 @@
+pve-san-fenced (0.1.0-1) unstable; urgency=medium
+
+  * Initial release of the Proxmox VE SAN fencing daemon and helper tools.
+
+ -- Bernd Zeimetz <bernd@bzed.de>  Tue, 23 Jun 2026 09:20:00 +0200

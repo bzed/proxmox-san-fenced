@@ -1,0 +1,14 @@
+Source: pve-san-fenced
+Section: admin
+Priority: optional
+Maintainer: Bernd Zeimetz <bernd@bzed.de>
+Build-Depends: debhelper-compat (= 13), cargo, rustc
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: pve-san-fenced
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, multipath-tools
+Description: Proxmox VE SAN fencing daemon
+ Proxmox VE SAN fencing daemon that monitors multipath maps
+ and triggers fencing actions if path failures occur.
