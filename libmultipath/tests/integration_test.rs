@@ -9,12 +9,10 @@
 //! the Free Software Foundation, either version 3 of the License, or
 //! (at your option) any later version.
 
-use libc::{
-    accept, bind, close, listen, setsockopt, sockaddr_un, socket, AF_UNIX, SOCK_STREAM, SOL_SOCKET,
-    SO_REUSEADDR,
-};
 use std::env;
-use std::mem;
+use std::io::{Read, Write};
+use std::os::linux::net::SocketAddrExt;
+use std::os::unix::net::{SocketAddr, UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -145,110 +143,43 @@ fn test_timeout_behavior() {
 
 fn run_custom_mock_server<F>(test_name: &str, mut handler: F) -> String
 where
-    F: FnMut(i32) + Send + 'static,
+    F: FnMut(UnixStream) + Send + 'static,
 {
     let socket_name = format!("/tmp/test-custom-mock-{}-{}", test_name, std::process::id());
     let socket_name_clone = socket_name.clone();
 
     std::thread::spawn(move || {
-        let fd = unsafe { socket(AF_UNIX, SOCK_STREAM, 0) };
-        assert!(fd >= 0);
-
-        let one: libc::c_int = 1;
-        unsafe {
-            setsockopt(
-                fd,
-                SOL_SOCKET,
-                SO_REUSEADDR,
-                &one as *const _ as *const libc::c_void,
-                mem::size_of_val(&one) as libc::socklen_t,
-            );
-        }
-
-        let mut addr: sockaddr_un = unsafe { mem::zeroed() };
-        addr.sun_family = AF_UNIX as u16;
-        addr.sun_path[0] = 0;
-        let name_bytes = socket_name_clone.as_bytes();
-        for (i, &byte) in name_bytes.iter().enumerate() {
-            addr.sun_path[1 + i] = byte as i8;
-        }
-        let addr_len = name_bytes.len() + 1 + 2;
-
-        let res = unsafe {
-            bind(
-                fd,
-                &addr as *const _ as *const _,
-                addr_len as libc::socklen_t,
-            )
-        };
-        assert!(res >= 0);
-
-        let res = unsafe { listen(fd, 1) };
-        assert!(res >= 0);
-
-        let conn_fd = unsafe { accept(fd, std::ptr::null_mut(), std::ptr::null_mut()) };
-        assert!(conn_fd >= 0);
-
-        handler(conn_fd);
-
-        unsafe {
-            close(conn_fd);
-            close(fd);
+        let addr = SocketAddr::from_abstract_name(socket_name_clone.as_bytes()).unwrap();
+        let listener = UnixListener::bind_addr(&addr).unwrap();
+        if let Ok((stream, _)) = listener.accept() {
+            handler(stream);
         }
     });
 
     socket_name
 }
 
-fn read_command(fd: i32) -> String {
+fn read_command(mut stream: &UnixStream) -> String {
     let mut len_bytes = [0u8; 8];
-    let mut total = 0;
-    while total < 8 {
-        let n = unsafe {
-            libc::read(
-                fd,
-                len_bytes[total..].as_mut_ptr() as *mut libc::c_void,
-                (8 - total) as libc::size_t,
-            )
-        };
-        if n <= 0 {
-            return String::new();
-        }
-        total += n as usize;
+    if stream.read_exact(&mut len_bytes).is_err() {
+        return String::new();
     }
     let cmd_len = u64::from_le_bytes(len_bytes) as usize;
     let mut cmd_bytes = vec![0u8; cmd_len];
-    let mut total = 0;
-    while total < cmd_len {
-        let n = unsafe {
-            libc::read(
-                fd,
-                cmd_bytes[total..].as_mut_ptr() as *mut libc::c_void,
-                (cmd_len - total) as libc::size_t,
-            )
-        };
-        if n <= 0 {
-            return String::new();
-        }
-        total += n as usize;
+    if stream.read_exact(&mut cmd_bytes).is_err() {
+        return String::new();
     }
     String::from_utf8_lossy(&cmd_bytes).into_owned()
 }
 
 #[test]
 fn test_mock_server_infinite_length() {
-    let socket_path = run_custom_mock_server("infinite_len", |fd| {
-        let _cmd = read_command(fd);
+    let socket_path = run_custom_mock_server("infinite_len", |mut stream| {
+        let _cmd = read_command(&stream);
         // Send a length that exceeds MAX_REPLY_LEN (32 MB)
         let len = (libmultipath::MAX_REPLY_LEN + 1) as u64;
         let len_bytes = len.to_le_bytes();
-        unsafe {
-            libc::write(
-                fd,
-                len_bytes.as_ptr() as *const libc::c_void,
-                len_bytes.len(),
-            );
-        }
+        stream.write_all(&len_bytes).ok();
     });
 
     std::thread::sleep(Duration::from_millis(50));
@@ -262,23 +193,15 @@ fn test_mock_server_infinite_length() {
 
 #[test]
 fn test_mock_server_infinite_stream() {
-    let socket_path = run_custom_mock_server("infinite_stream", |fd| {
-        let _cmd = read_command(fd);
+    let socket_path = run_custom_mock_server("infinite_stream", |mut stream| {
+        let _cmd = read_command(&stream);
         // Claim the response is 10 bytes
         let len = 10u64;
         let len_bytes = len.to_le_bytes();
-        unsafe {
-            libc::write(
-                fd,
-                len_bytes.as_ptr() as *const libc::c_void,
-                len_bytes.len(),
-            );
-        }
+        stream.write_all(&len_bytes).ok();
         // Write 1 MB of 'A's (much more than 10 bytes)
         let data = vec![b'A'; 1024 * 1024];
-        unsafe {
-            libc::write(fd, data.as_ptr() as *const libc::c_void, data.len());
-        }
+        stream.write_all(&data).ok();
     });
 
     std::thread::sleep(Duration::from_millis(50));
@@ -292,22 +215,14 @@ fn test_mock_server_infinite_stream() {
 
 #[test]
 fn test_mock_server_binary_garbage_invalid_utf8() {
-    let socket_path = run_custom_mock_server("binary_garbage_utf8", |fd| {
-        let _cmd = read_command(fd);
+    let socket_path = run_custom_mock_server("binary_garbage_utf8", |mut stream| {
+        let _cmd = read_command(&stream);
         let len = 4u64;
         let len_bytes = len.to_le_bytes();
-        unsafe {
-            libc::write(
-                fd,
-                len_bytes.as_ptr() as *const libc::c_void,
-                len_bytes.len(),
-            );
-        }
+        stream.write_all(&len_bytes).ok();
         // Send invalid UTF-8 bytes (null-terminated at the end so it truncates up to null, but first 3 bytes are invalid UTF-8)
         let data = [0xFFu8, 0xFEu8, 0xFDu8, 0x00u8];
-        unsafe {
-            libc::write(fd, data.as_ptr() as *const libc::c_void, data.len());
-        }
+        stream.write_all(&data).ok();
     });
 
     std::thread::sleep(Duration::from_millis(50));

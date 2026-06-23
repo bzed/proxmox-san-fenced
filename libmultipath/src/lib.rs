@@ -19,13 +19,10 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::ffi::CString;
-use std::io;
-use std::mem;
-
-use libc::{
-    close, connect, setsockopt, sockaddr_un, socket, timeval, AF_UNIX, SOCK_STREAM, SOL_SOCKET,
-    SO_RCVTIMEO, SO_SNDTIMEO,
-};
+use std::io::{self, Read, Write};
+use std::os::linux::net::SocketAddrExt;
+use std::os::unix::net::{SocketAddr, UnixStream};
+use std::time::Duration;
 
 /// Default socket path for multipathd (abstract namespace)
 /// Note: For abstract namespace sockets, the '@' prefix is just a convention
@@ -40,7 +37,7 @@ pub const DEFAULT_REPLY_TIMEOUT_MS: u64 = 4000;
 
 /// Represents a connection to the multipathd daemon.
 pub struct MultipathConnection {
-    fd: i32,
+    stream: UnixStream,
 }
 
 impl MultipathConnection {
@@ -55,8 +52,8 @@ impl MultipathConnection {
     ///
     /// * `socket_path` - The socket path to connect to (e.g., "@/org/kernel/linux/storage/multipathd")
     pub fn with_socket(socket_path: &str) -> io::Result<Self> {
-        let fd = Self::connect_to_socket(socket_path)?;
-        Ok(Self { fd })
+        let stream = Self::connect_to_socket(socket_path)?;
+        Ok(Self { stream })
     }
 
     /// Sends a command to multipathd and receives the reply.
@@ -70,10 +67,43 @@ impl MultipathConnection {
     ///
     /// Returns the reply as a String on success.
     pub fn send_command(&self, command: &str, timeout_ms: Option<u64>) -> io::Result<String> {
-        Self::send_command_on_fd(self.fd, command, timeout_ms)
+        Self::send_command_on_stream(&self.stream, command, timeout_ms)
     }
 
-    /// Sends a command to multipathd on the given file descriptor.
+    /// Sends a command to multipathd on the given UnixStream.
+    ///
+    /// # Arguments
+    ///
+    /// * `stream` - The UnixStream to use for communication
+    /// * `command` - The command string to send
+    /// * `timeout_ms` - Optional timeout in milliseconds for the reply
+    ///
+    /// # Returns
+    ///
+    /// Returns the reply as a String on success.
+    pub fn send_command_on_stream(
+        stream: &UnixStream,
+        command: &str,
+        timeout_ms: Option<u64>,
+    ) -> io::Result<String> {
+        // Set timeout if specified
+        if let Some(timeout) = timeout_ms {
+            let dur = Duration::from_millis(timeout);
+            stream.set_read_timeout(Some(dur))?;
+            stream.set_write_timeout(Some(dur))?;
+        } else {
+            stream.set_read_timeout(None)?;
+            stream.set_write_timeout(None)?;
+        }
+
+        // Send command
+        Self::send_command_stream(stream, command)?;
+
+        // Receive reply
+        Self::receive_reply_stream(stream)
+    }
+
+    /// Compatibility wrapper that sends a command to multipathd on the given file descriptor.
     ///
     /// # Arguments
     ///
@@ -89,24 +119,20 @@ impl MultipathConnection {
         command: &str,
         timeout_ms: Option<u64>,
     ) -> io::Result<String> {
-        // Validate fd is non-negative
         if fd < 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Invalid file descriptor",
             ));
         }
-
-        // Send command
-        Self::send_command_fd(fd, command)?;
-
-        // Set timeout if specified
-        if let Some(timeout) = timeout_ms {
-            Self::set_socket_timeout(fd, timeout)?;
-        }
-
-        // Receive reply
-        Self::receive_reply(fd)
+        // SAFETY: The caller guarantees fd is valid. We temporarily wrap it, do the I/O,
+        // and then disown it to prevent closing.
+        use std::os::fd::FromRawFd;
+        use std::os::fd::IntoRawFd;
+        let stream = unsafe { UnixStream::from_raw_fd(fd) };
+        let res = Self::send_command_on_stream(&stream, command, timeout_ms);
+        let _ = stream.into_raw_fd();
+        res
     }
 
     /// Sends a command without receiving a reply.
@@ -115,168 +141,47 @@ impl MultipathConnection {
     ///
     /// * `command` - The command string to send
     pub fn send_command_no_reply(&self, command: &str) -> io::Result<()> {
-        Self::send_command_fd(self.fd, command)
+        Self::send_command_stream(&self.stream, command)
     }
 
-    fn set_socket_timeout(fd: i32, timeout_ms: u64) -> io::Result<()> {
-        let timeout_sec = (timeout_ms / 1000) as libc::time_t;
-        let timeout_usec = ((timeout_ms % 1000) * 1000) as libc::suseconds_t;
-
-        let timeout_val = timeval {
-            tv_sec: timeout_sec,
-            tv_usec: timeout_usec,
-        };
-
-        unsafe {
-            let result = setsockopt(
-                fd,
-                SOL_SOCKET,
-                SO_RCVTIMEO,
-                &timeout_val as *const _ as *const libc::c_void,
-                mem::size_of_val(&timeout_val) as libc::socklen_t,
-            );
-            if result < 0 {
-                return Err(io::Error::last_os_error());
-            }
-            let result = setsockopt(
-                fd,
-                SOL_SOCKET,
-                SO_SNDTIMEO,
-                &timeout_val as *const _ as *const libc::c_void,
-                mem::size_of_val(&timeout_val) as libc::socklen_t,
-            );
-            if result < 0 {
-                return Err(io::Error::last_os_error());
-            }
-        }
-
-        Ok(())
-    }
-
-    fn connect_to_socket(socket_path: &str) -> io::Result<i32> {
-        let fd = unsafe { socket(AF_UNIX, SOCK_STREAM, 0) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        // Create abstract namespace socket address
-        let mut addr: sockaddr_un = unsafe { mem::zeroed() };
-        addr.sun_family = AF_UNIX as u16;
-        // For abstract namespace: sun_path[0] = '\0' and name starts at sun_path[1]
-        addr.sun_path[0] = 0;
-
-        // Extract the actual socket name, stripping the '@' prefix if present
-        // (the '@' is just a convention in systemd, not part of the actual name)
+    fn connect_to_socket(socket_path: &str) -> io::Result<UnixStream> {
         let socket_name = socket_path.strip_prefix('@').unwrap_or(socket_path);
-
-        let name_bytes = socket_name.as_bytes();
-        let name_len = name_bytes.len();
-        if name_len + 1 >= addr.sun_path.len() {
-            unsafe { close(fd) };
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Socket path too long",
-            ));
-        }
-        // Copy bytes to sun_path (which is [i8; 108])
-        for (i, &byte) in name_bytes.iter().enumerate() {
-            addr.sun_path[1 + i] = byte as i8;
-        }
-
-        let addr_ptr = &addr as *const sockaddr_un;
-        // Calculate the address length matching the C code:
-        // len = strlen(socket_name) + 1 + sizeof(sa_family_t)
-        // where the +1 accounts for the null byte at sun_path[0]
-        let addr_len = name_len + 1 + 2; // name_len + 1 (null at sun_path[0]) + 2 (sun_family)
-
-        let result = unsafe { connect(fd, addr_ptr as *const _, addr_len as libc::socklen_t) };
-        if result < 0 {
-            unsafe { close(fd) };
-            return Err(io::Error::last_os_error());
-        }
-
-        Ok(fd)
+        let addr = SocketAddr::from_abstract_name(socket_name.as_bytes())?;
+        UnixStream::connect_addr(&addr)
     }
 
-    fn send_command_fd(fd: i32, command: &str) -> io::Result<()> {
-        // Command string with null terminator
+    fn send_command_stream(mut stream: &UnixStream, command: &str) -> io::Result<()> {
         let cmd_with_null =
             CString::new(command).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
         let cmd_bytes = cmd_with_null.as_bytes_with_nul();
         let cmd_len = cmd_bytes.len() as u64;
 
-        // Send length (8 bytes, little-endian) using raw fd
-        let len_bytes = cmd_len.to_le_bytes();
-        let result = unsafe {
-            libc::write(
-                fd,
-                len_bytes.as_ptr() as *const libc::c_void,
-                len_bytes.len() as libc::size_t,
-            )
-        };
-        if result < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        // Send command using raw fd
-        let result = unsafe {
-            libc::write(
-                fd,
-                cmd_bytes.as_ptr() as *const libc::c_void,
-                cmd_bytes.len() as libc::size_t,
-            )
-        };
-        if result < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
+        stream.write_all(&cmd_len.to_le_bytes())?;
+        stream.write_all(cmd_bytes)?;
         Ok(())
     }
 
-    fn receive_reply(fd: i32) -> io::Result<String> {
-        // Receive length (8 bytes)
+    fn receive_reply_stream(mut stream: &UnixStream) -> io::Result<String> {
         let mut len_bytes = [0u8; 8];
-        let mut total_read = 0;
-
-        // Read exactly 8 bytes for the length using raw fd
-        while total_read < 8 {
-            let result = unsafe {
-                libc::read(
-                    fd,
-                    len_bytes[total_read..].as_mut_ptr() as *mut libc::c_void,
-                    (8 - total_read) as libc::size_t,
-                )
-            };
-            match result {
-                -1 => {
-                    let err = io::Error::last_os_error();
-                    // If timeout, return timeout error
-                    if err.raw_os_error() == Some(libc::EAGAIN)
-                        || err.raw_os_error() == Some(libc::EWOULDBLOCK)
-                    {
-                        return Err(io::Error::new(
-                            io::ErrorKind::TimedOut,
-                            "Timeout waiting for reply",
-                        ));
-                    }
-                    return Err(err);
-                }
-                0 => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionReset,
-                        "Connection closed while reading length",
-                    ));
-                }
-                n => {
-                    total_read += n as usize;
-                }
+        if let Err(e) = stream.read_exact(&mut len_bytes) {
+            if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Timeout waiting for reply",
+                ));
             }
+            if e.kind() == io::ErrorKind::UnexpectedEof {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "Connection closed while reading length",
+                ));
+            }
+            return Err(e);
         }
 
         let reply_len = u64::from_le_bytes(len_bytes) as usize;
 
-        // Validate length - the C code checks: len <= 0 || len >= MAX_REPLY_LEN
-        // We use > instead of >= to allow exactly MAX_REPLY_LEN bytes
+        // Validate length
         if reply_len == 0 || reply_len > MAX_REPLY_LEN {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -284,64 +189,34 @@ impl MultipathConnection {
             ));
         }
 
-        // Receive reply data
         let mut reply_buf = vec![0u8; reply_len];
-        let mut total_read = 0;
-
-        while total_read < reply_len {
-            let result = unsafe {
-                libc::read(
-                    fd,
-                    reply_buf[total_read..].as_mut_ptr() as *mut libc::c_void,
-                    (reply_len - total_read) as libc::size_t,
-                )
-            };
-            match result {
-                -1 => {
-                    let err = io::Error::last_os_error();
-                    // If timeout, return timeout error
-                    if err.raw_os_error() == Some(libc::EAGAIN)
-                        || err.raw_os_error() == Some(libc::EWOULDBLOCK)
-                    {
-                        return Err(io::Error::new(
-                            io::ErrorKind::TimedOut,
-                            "Timeout waiting for reply data",
-                        ));
-                    }
-                    return Err(err);
-                }
-                0 => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionReset,
-                        "Connection closed while reading data",
-                    ));
-                }
-                n => {
-                    total_read += n as usize;
-                }
+        if let Err(e) = stream.read_exact(&mut reply_buf) {
+            if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Timeout waiting for reply data",
+                ));
             }
+            if e.kind() == io::ErrorKind::UnexpectedEof {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "Connection closed while reading data",
+                ));
+            }
+            return Err(e);
         }
 
-        // The C code does: reply[len - 1] = '\\0'
-        // This ensures the string is null-terminated.
         if !reply_buf.is_empty() {
             let last_idx = reply_buf.len() - 1;
             reply_buf[last_idx] = 0;
         }
 
-        // Convert to String, excluding any null bytes at the end
         if let Some(pos) = reply_buf.iter().position(|&b| b == 0) {
             reply_buf.truncate(pos);
         }
 
         String::from_utf8(reply_buf)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Invalid UTF-8: {e}")))
-    }
-}
-
-impl Drop for MultipathConnection {
-    fn drop(&mut self) {
-        unsafe { close(self.fd) };
     }
 }
 

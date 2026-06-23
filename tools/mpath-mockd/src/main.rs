@@ -22,15 +22,13 @@ use clap::Parser;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::mem;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
-use libc::{
-    accept, bind, close, getpid, listen, read, setsockopt, sockaddr_un, socket, write, AF_UNIX,
-    SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, SO_REUSEPORT,
-};
+use std::io::{Read, Write};
+use std::os::linux::net::SocketAddrExt;
+use std::os::unix::net::{SocketAddr, UnixListener, UnixStream};
 
 /// Default socket path for the mock daemon
 /// Note: Use a different socket than the real multipathd to avoid conflicts
@@ -249,36 +247,29 @@ fn main() {
     let command_responses = Arc::new(RwLock::new(command_responses));
     let file_counters = Arc::new(FileCounters::new());
 
-    // Create socket
-    let sock_fd = match create_abstract_socket(&cli.socket) {
-        Ok(fd) => fd,
+    // Create socket listener
+    let listener = match create_abstract_listener(&cli.socket) {
+        Ok(l) => l,
         Err(e) => {
-            eprintln!("Error creating socket: {}", e);
+            eprintln!("Error creating socket: {e}");
             std::process::exit(1);
         }
     };
 
     if cli.verbose {
         eprintln!("Listening on abstract namespace socket: {}", cli.socket);
-        eprintln!("PID: {}", unsafe { getpid() });
-    }
-
-    // Listen for connections
-    unsafe {
-        if listen(sock_fd, 5) < 0 {
-            eprintln!("Error listening on socket: {}", io::Error::last_os_error());
-            close(sock_fd);
-            std::process::exit(1);
-        }
+        eprintln!("PID: {}", std::process::id());
     }
 
     // Accept connections in a loop
-    loop {
-        let conn_fd = unsafe { accept(sock_fd, std::ptr::null_mut(), std::ptr::null_mut()) };
-        if conn_fd < 0 {
-            eprintln!("Error accepting connection: {}", io::Error::last_os_error());
-            continue;
-        }
+    for stream in listener.incoming() {
+        let stream = match stream {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Error accepting connection: {e}");
+                continue;
+            }
+        };
 
         if cli.verbose {
             eprintln!("Accepted connection");
@@ -289,7 +280,7 @@ fn main() {
         let file_counters_clone = file_counters.clone();
         thread::spawn(move || {
             handle_connection(
-                conn_fd,
+                stream,
                 command_responses_clone,
                 file_counters_clone,
                 cli.verbose,
@@ -298,13 +289,8 @@ fn main() {
     }
 }
 
-/// Creates an abstract namespace socket and binds it
-fn create_abstract_socket(socket_path: &str) -> io::Result<i32> {
-    let fd = unsafe { socket(AF_UNIX, SOCK_STREAM, 0) };
-    if fd < 0 {
-        return Err(io::Error::last_os_error());
-    }
-
+/// Creates an abstract namespace socket listener
+fn create_abstract_listener(socket_path: &str) -> io::Result<UnixListener> {
     let normalized = socket_path.strip_prefix('@').unwrap_or(socket_path);
     if normalized == "org/kernel/linux/storage/multipathd"
         || normalized == "/org/kernel/linux/storage/multipathd"
@@ -315,152 +301,47 @@ fn create_abstract_socket(socket_path: &str) -> io::Result<i32> {
         ));
     }
 
-    // Set SO_REUSEADDR and SO_REUSEPORT to allow quick restart
-    let one: libc::c_int = 1;
-    unsafe {
-        setsockopt(
-            fd,
-            SOL_SOCKET,
-            SO_REUSEADDR,
-            &one as *const _ as *const libc::c_void,
-            mem::size_of_val(&one) as libc::socklen_t,
-        );
-        setsockopt(
-            fd,
-            SOL_SOCKET,
-            SO_REUSEPORT,
-            &one as *const _ as *const libc::c_void,
-            mem::size_of_val(&one) as libc::socklen_t,
-        );
-    }
-
-    // Create abstract namespace socket address
-    let mut addr: sockaddr_un = unsafe { mem::zeroed() };
-    addr.sun_family = AF_UNIX as u16;
-
-    // Extract the actual socket name, stripping the '@' prefix if present
-    let socket_name = socket_path.strip_prefix('@').unwrap_or(socket_path);
-
-    let name_bytes = socket_name.as_bytes();
-    if name_bytes.len() + 1 >= addr.sun_path.len() {
-        unsafe { close(fd) };
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "Socket path too long",
-        ));
-    }
-
-    // For abstract namespace: sun_path[0] = '\0' and name starts at sun_path[1]
-    addr.sun_path[0] = 0;
-    for (i, &byte) in name_bytes.iter().enumerate() {
-        addr.sun_path[1 + i] = byte as i8;
-    }
-
-    let addr_ptr = &addr as *const sockaddr_un;
-    // Calculate the address length: sun_family (2) + 1 (null at sun_path[0]) + name_len
-    let addr_len = 2 + 1 + name_bytes.len();
-
-    let result = unsafe { bind(fd, addr_ptr as *const _, addr_len as libc::socklen_t) };
-    if result < 0 {
-        unsafe { close(fd) };
-        return Err(io::Error::last_os_error());
-    }
-
-    Ok(fd)
+    let addr = SocketAddr::from_abstract_name(normalized.as_bytes())?;
+    UnixListener::bind_addr(&addr)
 }
 
 /// Handles a single client connection
 fn handle_connection(
-    conn_fd: i32,
+    mut stream: UnixStream,
     command_responses: Arc<RwLock<HashMap<String, Vec<String>>>>,
     file_counters: Arc<FileCounters>,
     verbose: bool,
 ) {
     // Read command length (8 bytes, little-endian)
     let mut len_bytes = [0u8; 8];
-    let mut total_read = 0;
-
-    while total_read < 8 {
-        let result = unsafe {
-            read(
-                conn_fd,
-                len_bytes[total_read..].as_mut_ptr() as *mut libc::c_void,
-                (8 - total_read) as libc::size_t,
-            )
-        };
-        match result {
-            -1 => {
-                if verbose {
-                    eprintln!(
-                        "Error reading command length: {}",
-                        io::Error::last_os_error()
-                    );
-                }
-                unsafe { close(conn_fd) };
-                return;
-            }
-            0 => {
-                if verbose {
-                    eprintln!("Connection closed while reading length");
-                }
-                unsafe { close(conn_fd) };
-                return;
-            }
-            n => {
-                total_read += n as usize;
-            }
+    if let Err(e) = stream.read_exact(&mut len_bytes) {
+        if verbose {
+            eprintln!("Error reading command length: {e}");
         }
+        return;
     }
 
     let cmd_len = u64::from_le_bytes(len_bytes) as usize;
     if verbose {
-        eprintln!("Command length: {}", cmd_len);
+        eprintln!("Command length: {cmd_len}");
     }
 
     // Validate command length to prevent OOM attacks
     const MAX_CMD_LEN: usize = 1024 * 1024; // 1 MB max command length
     if cmd_len > MAX_CMD_LEN {
         if verbose {
-            eprintln!(
-                "Command length {} exceeds maximum of {}",
-                cmd_len, MAX_CMD_LEN
-            );
+            eprintln!("Command length {cmd_len} exceeds maximum of {MAX_CMD_LEN}");
         }
-        unsafe { close(conn_fd) };
         return;
     }
 
     // Read command
     let mut command_buf = vec![0u8; cmd_len];
-    let mut total_read = 0;
-
-    while total_read < cmd_len {
-        let result = unsafe {
-            read(
-                conn_fd,
-                command_buf[total_read..].as_mut_ptr() as *mut libc::c_void,
-                (cmd_len - total_read) as libc::size_t,
-            )
-        };
-        match result {
-            -1 => {
-                if verbose {
-                    eprintln!("Error reading command: {}", io::Error::last_os_error());
-                }
-                unsafe { close(conn_fd) };
-                return;
-            }
-            0 => {
-                if verbose {
-                    eprintln!("Connection closed while reading command");
-                }
-                unsafe { close(conn_fd) };
-                return;
-            }
-            n => {
-                total_read += n as usize;
-            }
+    if let Err(e) = stream.read_exact(&mut command_buf) {
+        if verbose {
+            eprintln!("Error reading command: {e}");
         }
+        return;
     }
 
     // Convert to string (strip null terminator if present)
@@ -471,7 +352,7 @@ fn handle_connection(
     };
 
     if verbose {
-        eprintln!("Received command: '{}'", command);
+        eprintln!("Received command: '{command}'");
     }
 
     // Look up response - now uses cycling through available files
@@ -485,7 +366,7 @@ fn handle_connection(
                 // Multiple files, cycle through them
                 let index = file_counters.next_index(&command, file_list.len());
                 if verbose {
-                    eprintln!("Using file index {} for command '{}'", index, command);
+                    eprintln!("Using file index {index} for command '{command}'");
                 }
                 file_list[index].clone()
             }
@@ -499,7 +380,7 @@ fn handle_connection(
             }
         } else {
             if verbose {
-                eprintln!("No response for command '{}', using empty", command);
+                eprintln!("No response for command '{command}', using empty");
             }
             r#"{"error": "unknown command"}"#.to_string()
         }
@@ -512,43 +393,22 @@ fn handle_connection(
     let len_bytes = resp_len.to_le_bytes();
 
     // Send response length
-    let result = unsafe {
-        write(
-            conn_fd,
-            len_bytes.as_ptr() as *const libc::c_void,
-            len_bytes.len() as libc::size_t,
-        )
-    };
-    if result < 0 {
+    if let Err(e) = stream.write_all(&len_bytes) {
         if verbose {
-            eprintln!(
-                "Error sending response length: {}",
-                io::Error::last_os_error()
-            );
+            eprintln!("Error sending response length: {e}");
         }
-        unsafe { close(conn_fd) };
         return;
     }
 
     // Send response with null terminator
-    let result = unsafe {
-        write(
-            conn_fd,
-            resp_with_null.as_ptr() as *const libc::c_void,
-            resp_with_null.len() as libc::size_t,
-        )
-    };
-    if result < 0 {
+    if let Err(e) = stream.write_all(&resp_with_null) {
         if verbose {
-            eprintln!("Error sending response: {}", io::Error::last_os_error());
+            eprintln!("Error sending response: {e}");
         }
-        unsafe { close(conn_fd) };
         return;
     }
 
     if verbose {
         eprintln!("Sent response of length {}", resp_with_null.len());
     }
-
-    unsafe { close(conn_fd) };
 }
