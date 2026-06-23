@@ -29,7 +29,6 @@ The project consists of:
 - A main daemon (pve-san-fenced) - to be implemented
 
 All components are written in Rust 2021 edition and use the following common dependencies (defined in workspace Cargo.toml):
-- `libc = "0.2"` - For system calls and FFI
 - `clap = { version = "4.0", features = ["derive"] }` - For CLI argument parsing
 - `lsblk = "0.6.1"` - For block device information
 - `serde = { version = "1.0", features = ["derive"] }` - For serialization
@@ -116,7 +115,7 @@ pve-san-fenced/
 **Location**: `libmultipath/`
 
 **Dependencies**:
-- `libc = "0.2"`
+- None (uses standard library `std::os::unix::net` and `std::os::linux::net`)
 
 **Key Constants**:
 - `DEFAULT_SOCKET: &str = "/org/kernel/linux/storage/multipathd"` - Default abstract namespace socket path
@@ -127,11 +126,11 @@ pve-san-fenced/
 
 ```rust
 pub struct MultipathConnection {
-    fd: i32,
+    stream: std::os::unix::net::UnixStream,
 }
 ```
 - Represents a connection to the multipathd daemon
-- `fd` is the file descriptor for the socket connection
+- `stream` is the `UnixStream` for the socket connection
 
 **Implementation Details**:
 
@@ -143,14 +142,14 @@ The `MultipathConnection` struct provides methods for:
 
 2. **Sending commands**:
    - `send_command(&self, command: &str, timeout_ms: Option<u64>)` - Sends a command and receives reply
-   - `send_command_on_fd(fd: i32, command: &str, timeout_ms: Option<u64>)` - Static method to send on given FD
+   - `send_command_on_stream(stream: &UnixStream, command: &str, timeout_ms: Option<u64>)` - Static method to send on given stream
+   - `send_command_on_fd(fd: i32, command: &str, timeout_ms: Option<u64>)` - Static compatibility method to send on given FD
    - `send_command_no_reply(&self, command: &str)` - Sends command without waiting for reply
 
 3. **Internal helper methods**:
-   - `set_socket_timeout(fd: i32, timeout_ms: u64)` - Sets send/receive timeouts on socket
    - `connect_to_socket(socket_path: &str)` - Establishes connection to abstract namespace socket
-   - `send_command_fd(fd: i32, command: &str)` - Sends command bytes with length prefix
-   - `receive_reply(fd: i32)` - Receives and validates reply from socket
+   - `send_command_stream(stream: &UnixStream, command: &str)` - Sends command bytes with length prefix
+   - `receive_reply_stream(stream: &UnixStream)` - Receives and validates reply from stream
 
 **Protocol Details**:
 
@@ -183,7 +182,7 @@ These provide simple one-line access to multipathd without managing connections 
 - Validates reply length is within bounds (0 < len < MAX_REPLY_LEN)
 
 **Cleanup**:
-- Implements `Drop` for `MultipathConnection` to close the socket file descriptor
+- `UnixStream` automatically closes the socket file descriptor on drop, so no manual `Drop` implementation is required for `MultipathConnection`.
 
 **Testing**:
 - Uses `mpath-mockd` as a test double
@@ -476,7 +475,6 @@ enum Commands {
 **Location**: `tools/mpath-mockd/`
 
 **Dependencies**:
-- `libc = "0.2"`
 - `clap = { version = "4.0", features = ["derive"] }`
 - `serde = { version = "1.0", features = ["derive"] }`
 - `serde_json = "1.0"`
@@ -753,7 +751,6 @@ test-data/
 **Location**: `src/` (root package of the workspace)
 
 **Dependencies**:
-**Dependencies**:
 - `libmultipath = { path = "../libmultipath" }`
 - `libpve-san = { path = "../libpve-san" }`
 - `tokio = { workspace = true, features = ["rt", "time", "macros", "fs", "process", "sync"] }`
@@ -762,7 +759,6 @@ test-data/
 - `log = "0.4"`
 - `env_logger = "0.10"` (or similar for stdout logging)
 - `clap = { workspace = true }`
-- `libc = { workspace = true }`
 
 **CLI Arguments**:
 - `--poll-interval` (default: 5): Seconds between multipathd checks.
@@ -842,9 +838,9 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
             The loop will then continue normal monitoring without executing the panic or reboot.
           - If **not active**, execute the fencing sequence:
             1. Log critical: `"SAN FENCER: Total persistent storage loss detected. Threshold met."`
-            2. Log critical: `"SAN FENCER: Initiating filesystem sync..."`
-            3. Sync filesystems to flush any memory buffers for local storage (OS disk) using `unsafe { libc::sync() }`.
-            4. Wait 2 seconds using `tokio::time::sleep(std::time::Duration::from_secs(2)).await`.
+             2. Log critical: `"SAN FENCER: Initiating filesystem sync..."`
+             3. Sync filesystems to flush any memory buffers for local storage (OS disk) using `std::process::Command::new("sync").status()`.
+             4. Wait 2 seconds using `tokio::time::sleep(std::time::Duration::from_secs(2)).await`.
             5. Log critical: `"SAN FENCER: Triggering SysRq Fencing NOW."`
             6. Trigger Fencing:
                - Attempt to write the configured `--sysrq-char` (default `"b"`) to `/proc/sysrq-trigger` using `tokio::fs::write`.
