@@ -143,20 +143,27 @@ pub async fn discover_in_use_mpaths(
             if vm.status == "running" {
                 for disk in vm.disks {
                     let dm_name = storage_to_dm_name(&disk.storage);
+                    let mut matched_mpaths = None;
                     if let Some(mpaths) = mpath_map.get(&dm_name) {
-                        for mpath in mpaths {
-                            active_mpaths.insert(mpath.clone());
-                        }
+                        matched_mpaths = Some(mpaths);
                     } else if let Some(mpaths) = mpath_map.get(&disk.storage) {
-                        for mpath in mpaths {
-                            active_mpaths.insert(mpath.clone());
-                        }
+                        matched_mpaths = Some(mpaths);
                     } else if let Some(mpaths) = dm_name
                         .strip_prefix("/dev/mapper/")
                         .and_then(|dm| mpath_map.get(dm))
                     {
-                        for mpath in mpaths {
-                            active_mpaths.insert(mpath.clone());
+                        matched_mpaths = Some(mpaths);
+                    }
+
+                    if let Some(mpaths) = matched_mpaths {
+                        if mpaths.len() > 1 {
+                            let mut sorted_mpaths: Vec<String> = mpaths.iter().cloned().collect();
+                            sorted_mpaths.sort();
+                            active_mpaths.insert(sorted_mpaths.join("+"));
+                        } else {
+                            for mpath in mpaths {
+                                active_mpaths.insert(mpath.clone());
+                            }
                         }
                     }
                 }
@@ -313,7 +320,14 @@ impl Fencer {
         let monitored_maps: Vec<&MultipathMap> = maps
             .iter()
             .filter(|map| {
-                let is_active = active_luns.contains(&map.name) || active_luns.contains(&map.uuid);
+                let is_active = active_luns.iter().any(|lun| {
+                    if lun.contains('+') {
+                        let parts: Vec<&str> = lun.split('+').collect();
+                        parts.contains(&map.name.as_str()) || parts.contains(&map.uuid.as_str())
+                    } else {
+                        lun == &map.name || lun == &map.uuid
+                    }
+                });
                 let is_targeted = if self.target_wwids.is_empty() {
                     true
                 } else {
@@ -354,20 +368,46 @@ impl Fencer {
             return false;
         }
 
-        let mut all_paths_dead = true;
-        for map in &monitored_maps {
-            if !is_map_dead(map) {
-                all_paths_dead = false;
-                break;
+        let mut has_failed_spanned = false;
+        let mut all_groups_failed = true;
+
+        for lun in active_luns {
+            let group_failed = if lun.contains('+') {
+                let parts: Vec<&str> = lun.split('+').collect();
+                parts.iter().any(|&part| {
+                    monitored_maps
+                        .iter()
+                        .find(|m| m.name == part || m.uuid == part)
+                        .copied()
+                        .map(is_map_dead)
+                        .unwrap_or(false)
+                })
+            } else {
+                monitored_maps
+                    .iter()
+                    .find(|m| m.name == *lun || m.uuid == *lun)
+                    .copied()
+                    .map(is_map_dead)
+                    .unwrap_or(false)
+            };
+
+            if lun.contains('+') && group_failed {
+                has_failed_spanned = true;
+            }
+
+            if !group_failed {
+                all_groups_failed = false;
             }
         }
 
+        let fencing_condition_met = has_failed_spanned || all_groups_failed;
+
         let cf = self.consecutive_failures;
         debug!(
-            "Fencer cycle result - all_paths_dead: {all_paths_dead}, consecutive_failures: {cf}"
+            "Fencer cycle result - fencing_condition_met: {fencing_condition_met}, consecutive_failures: {cf}"
         );
 
-        if all_paths_dead {
+        if fencing_condition_met {
             self.consecutive_failures = self.consecutive_failures.saturating_add(1);
             let cf = self.consecutive_failures;
             let mf = self.max_failures;
@@ -376,6 +416,7 @@ impl Fencer {
             if self.consecutive_failures >= self.max_failures {
                 let dead_map_names: Vec<String> = monitored_maps
                     .iter()
+                    .filter(|m| is_map_dead(m))
                     .map(|m| {
                         let name = &m.name;
                         let uuid = &m.uuid;
@@ -384,7 +425,7 @@ impl Fencer {
                     .collect();
                 let targets = &self.target_wwids;
                 warn!(
-                    "DECISION: Rebooting node because all monitored multipath maps in use by running VMs have failed. \
+                    "DECISION: Rebooting node because monitored multipath maps in use by running VMs have failed. \
                      Failed monitored maps: {dead_map_names:?}. Active LUNs: {active_luns:?}. Target WWIDs: {targets:?}."
                 );
                 return true;
@@ -1072,5 +1113,163 @@ mod tests {
         fencer.update_with_maps(&maps, &active);
         assert!(fencer.previous_map_states.contains_key("mpatha"));
         assert!(!fencer.previous_map_states.contains_key("mpathb"));
+    }
+
+    #[test]
+    fn test_fencing_scenario_spanned_vg() {
+        let active_luns: HashSet<String> = vec!["mpatha+mpathb".to_string()].into_iter().collect();
+
+        // 1. Both mpatha and mpathb are alive -> expect no failure, no fencing
+        let steps_both_healthy = vec![
+            ScenarioStep {
+                multipath_file: "all_active_running.json",
+                active_luns: active_luns.clone(),
+                expected_failures: 0,
+                expected_fencing: false,
+            },
+        ];
+        run_scenario(/*max_failures*/ 3, &[], &steps_both_healthy);
+
+        // 2. mpatha fails, mpathb remains healthy -> should trigger fencing since one of the involved multipath devices fails
+        let steps_one_failed = vec![
+            ScenarioStep {
+                multipath_file: "mpatha_active_mpathb_failed.json",
+                active_luns: active_luns.clone(),
+                expected_failures: 1,
+                expected_fencing: false,
+            },
+            ScenarioStep {
+                multipath_file: "mpatha_active_mpathb_failed.json",
+                active_luns: active_luns.clone(),
+                expected_failures: 2,
+                expected_fencing: false,
+            },
+            ScenarioStep {
+                multipath_file: "mpatha_active_mpathb_failed.json",
+                active_luns: active_luns.clone(),
+                expected_failures: 3,
+                expected_fencing: true,
+            },
+        ];
+        run_scenario(/*max_failures*/ 3, &[], &steps_one_failed);
+    }
+
+    #[test]
+    fn test_fencing_spanned_vg_in_memory() {
+        let mut fencer = Fencer::new(3, HashSet::new());
+        let active: HashSet<String> = vec!["mpatha+mpathb".to_string(), "mpathc".to_string()]
+            .into_iter()
+            .collect();
+
+        // Step 1: All healthy
+        let maps_all_healthy = vec![
+            MultipathMap {
+                name: "mpatha".to_string(),
+                uuid: "uuid-a".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                }]),
+            },
+            MultipathMap {
+                name: "mpathb".to_string(),
+                uuid: "uuid-b".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                }]),
+            },
+            MultipathMap {
+                name: "mpathc".to_string(),
+                uuid: "uuid-c".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                }]),
+            },
+        ];
+
+        let triggered = fencer.update_with_maps(&maps_all_healthy, &active);
+        assert!(!triggered);
+        assert_eq!(fencer.consecutive_failures(), 0);
+
+        // Step 2: One member of spanned group fails (mpatha is dead)
+        let maps_mpatha_failed = vec![
+            MultipathMap {
+                name: "mpatha".to_string(),
+                uuid: "uuid-a".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("failed".to_string()),
+                    paths: Some(vec![MpathPath { dm_st: Some("failed".to_string()) }]),
+                }]),
+            },
+            MultipathMap {
+                name: "mpathb".to_string(),
+                uuid: "uuid-b".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                }]),
+            },
+            MultipathMap {
+                name: "mpathc".to_string(),
+                uuid: "uuid-c".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                }]),
+            },
+        ];
+
+        let triggered = fencer.update_with_maps(&maps_mpatha_failed, &active);
+        assert!(!triggered);
+        assert_eq!(fencer.consecutive_failures(), 1);
+
+        // Step 3: Sustained failure for 3 cycles -> fence!
+        fencer.update_with_maps(&maps_mpatha_failed, &active);
+        let triggered = fencer.update_with_maps(&maps_mpatha_failed, &active);
+        assert!(triggered);
+        assert_eq!(fencer.consecutive_failures(), 3);
+    }
+
+    #[test]
+    fn test_fencing_spanned_vg_mix_single_failed() {
+        let mut fencer = Fencer::new(3, HashSet::new());
+        let active: HashSet<String> = vec!["mpatha+mpathb".to_string(), "mpathc".to_string()]
+            .into_iter()
+            .collect();
+
+        // mpathc fails, but spanned group mpatha+mpathb remains healthy.
+        // We should NOT trigger fencing because not all single LUNs/groups are dead.
+        let maps_mpathc_failed = vec![
+            MultipathMap {
+                name: "mpatha".to_string(),
+                uuid: "uuid-a".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                }]),
+            },
+            MultipathMap {
+                name: "mpathb".to_string(),
+                uuid: "uuid-b".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("active".to_string()),
+                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                }]),
+            },
+            MultipathMap {
+                name: "mpathc".to_string(),
+                uuid: "uuid-c".to_string(),
+                path_groups: Some(vec![PathGroup {
+                    dm_st: Some("failed".to_string()),
+                    paths: Some(vec![MpathPath { dm_st: Some("failed".to_string()) }]),
+                }]),
+            },
+        ];
+
+        let triggered = fencer.update_with_maps(&maps_mpathc_failed, &active);
+        assert!(!triggered);
+        assert_eq!(fencer.consecutive_failures(), 0);
     }
 }
