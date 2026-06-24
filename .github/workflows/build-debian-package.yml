@@ -9,6 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container: debian:stable
 
     steps:
       - name: Checkout repository
@@ -16,8 +17,8 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y debhelper fakeroot dpkg-dev curl ca-certificates
+          apt-get update
+          apt-get install -y debhelper fakeroot dpkg-dev curl ca-certificates git build-essential
 
       - name: Generate upstream tarball
         run: |
