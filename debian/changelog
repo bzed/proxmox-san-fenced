@@ -1,4 +1,4 @@
-pve-san-fenced (0.1.0-1) unstable; urgency=medium
+pve-san-fenced (0.1.0) unstable; urgency=medium
 
   * Initial release of the Proxmox VE SAN fencing daemon and helper tools.
 
