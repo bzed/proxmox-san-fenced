@@ -1,0 +1,42 @@
+name: Build Debian Package
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debhelper fakeroot dpkg-dev curl ca-certificates
+
+      - name: Generate upstream tarball
+        run: |
+          # The package version in debian/changelog is 0.1.0-1.
+          # For a non-native (3.0 quilt) package, we need the original upstream tarball in the parent directory.
+          tar --exclude='./debian' --exclude='./.git' --exclude='./target' -czf ../pve-san-fenced_0.1.0.orig.tar.gz .
+
+      - name: Build Debian package
+        run: |
+          dpkg-buildpackage -us -uc
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-package-artifacts
+          path: |
+            ../pve-san-fenced_*.deb
+            ../pve-san-fenced-dbgsym_*.deb
+            ../pve-san-fenced_*.dsc
+            ../pve-san-fenced_*.debian.tar.xz
+            ../pve-san-fenced_*.changes
+            ../pve-san-fenced_*.buildinfo
