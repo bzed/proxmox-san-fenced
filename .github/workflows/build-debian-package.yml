@@ -29,15 +29,11 @@ jobs:
       - name: Build Debian package
         run: |
           dpkg-buildpackage -us -uc
+          mkdir -p debian-build
+          mv ../pve-san-fenced_* ../pve-san-fenced-dbgsym_* debian-build/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: debian-package-artifacts
-          path: |
-            ../pve-san-fenced_*.deb
-            ../pve-san-fenced-dbgsym_*.deb
-            ../pve-san-fenced_*.dsc
-            ../pve-san-fenced_*.debian.tar.xz
-            ../pve-san-fenced_*.changes
-            ../pve-san-fenced_*.buildinfo
+          path: debian-build/
