@@ -196,7 +196,9 @@ fn validate_sysrq(sysrq_chars: &str) -> Result<(), String> {
 
     for &c in &chars {
         if sysrq_char_to_bit(c).is_none() {
-            return Err(format!("Invalid SysRq character '{c}' specified in configuration"));
+            return Err(format!(
+                "Invalid SysRq character '{c}' specified in configuration"
+            ));
         }
     }
 
@@ -417,7 +419,14 @@ mod tests {
         };
         assert_eq!(cli, expected);
 
-        let args_alias = vec!["pve-san-fenced", "-n", "pve01", "-t", "--sysrq-chars", "s,b,c"];
+        let args_alias = vec![
+            "pve-san-fenced",
+            "-n",
+            "pve01",
+            "-t",
+            "--sysrq-chars",
+            "s,b,c",
+        ];
         let cli_alias = Cli::try_parse_from(args_alias).unwrap();
         assert_eq!(cli_alias.sysrq_char, "s,b,c");
 

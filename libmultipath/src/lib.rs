@@ -27,7 +27,7 @@ use std::time::Duration;
 /// Default socket path for multipathd (abstract namespace)
 /// Note: For abstract namespace sockets, the '@' prefix is just a convention
 /// in systemd. The actual socket name does not include the '@'.
-pub const DEFAULT_SOCKET: &str = "/org/kernel/linux/storage/multipathd";
+pub const DEFAULT_SOCKET: &str = "@/org/kernel/linux/storage/multipathd";
 
 /// Maximum reply length (32 MB, same as C implementation)
 pub const MAX_REPLY_LEN: usize = 32 * 1024 * 1024;
@@ -145,9 +145,12 @@ impl MultipathConnection {
     }
 
     fn connect_to_socket(socket_path: &str) -> io::Result<UnixStream> {
-        let socket_name = socket_path.strip_prefix('@').unwrap_or(socket_path);
-        let addr = SocketAddr::from_abstract_name(socket_name.as_bytes())?;
-        UnixStream::connect_addr(&addr)
+        if let Some(abstract_name) = socket_path.strip_prefix('@') {
+            let addr = SocketAddr::from_abstract_name(abstract_name.as_bytes())?;
+            UnixStream::connect_addr(&addr)
+        } else {
+            UnixStream::connect(socket_path)
+        }
     }
 
     fn send_command_stream(mut stream: &UnixStream, command: &str) -> io::Result<()> {

@@ -455,7 +455,9 @@ fn test_integration_invalid_sysrq_chars() {
     let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 
     assert!(
-        full_logs.contains("Configuration error: Invalid SysRq character 'x' specified in configuration"),
+        full_logs.contains(
+            "Configuration error: Invalid SysRq character 'x' specified in configuration"
+        ),
         "Logs did not contain expected error: {full_logs}"
     );
 }

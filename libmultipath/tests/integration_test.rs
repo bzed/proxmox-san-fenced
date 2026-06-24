@@ -145,12 +145,18 @@ fn run_custom_mock_server<F>(test_name: &str, mut handler: F) -> String
 where
     F: FnMut(UnixStream) + Send + 'static,
 {
-    let socket_name = format!("/tmp/test-custom-mock-{}-{}", test_name, std::process::id());
+    let pid = std::process::id();
+    let socket_name = format!("@/tmp/test-custom-mock-{test_name}-{pid}");
     let socket_name_clone = socket_name.clone();
 
     std::thread::spawn(move || {
-        let addr = SocketAddr::from_abstract_name(socket_name_clone.as_bytes()).unwrap();
-        let listener = UnixListener::bind_addr(&addr).unwrap();
+        let listener = if let Some(abstract_name) = socket_name_clone.strip_prefix('@') {
+            let addr = SocketAddr::from_abstract_name(abstract_name.as_bytes()).unwrap();
+            UnixListener::bind_addr(&addr).unwrap()
+        } else {
+            let _ = std::fs::remove_file(&socket_name_clone);
+            UnixListener::bind(&socket_name_clone).unwrap()
+        };
         if let Ok((stream, _)) = listener.accept() {
             handler(stream);
         }
@@ -232,4 +238,85 @@ fn test_mock_server_binary_garbage_invalid_utf8() {
     let err = result.err().unwrap();
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("Invalid UTF-8"));
+}
+
+#[test]
+fn test_filesystem_socket_communication() {
+    let pid = std::process::id();
+    let socket_path = format!("/tmp/test-libmultipath-fs-{pid}");
+    let socket_path_clone = socket_path.clone();
+
+    std::thread::spawn(move || {
+        let _ = std::fs::remove_file(&socket_path_clone);
+        let listener = UnixListener::bind(&socket_path_clone).unwrap();
+        if let Ok((stream, _)) = listener.accept() {
+            let mut s = stream;
+            let cmd = read_command(&s);
+            assert_eq!(cmd.trim_end_matches('\0'), "show maps json");
+
+            let reply = "{\"maps\": []}";
+            let reply_bytes = reply.as_bytes();
+            let reply_len = (reply_bytes.len() + 1) as u64;
+            s.write_all(&reply_len.to_le_bytes()).unwrap();
+            s.write_all(reply_bytes).unwrap();
+            s.write_all(&[0u8]).unwrap();
+        }
+    });
+
+    std::thread::sleep(Duration::from_millis(50));
+
+    let conn = libmultipath::MultipathConnection::with_socket(&socket_path);
+    assert!(
+        conn.is_ok(),
+        "Failed to connect to filesystem socket: {:?}",
+        conn.err()
+    );
+    let conn = conn.unwrap();
+
+    let reply = conn.send_command("show maps json", None);
+    assert!(reply.is_ok(), "Failed to send command: {:?}", reply.err());
+    let reply = reply.unwrap();
+    assert_eq!(reply, "{\"maps\": []}");
+
+    let _ = std::fs::remove_file(&socket_path);
+}
+
+#[test]
+fn test_abstract_socket_communication() {
+    let pid = std::process::id();
+    let socket_path = format!("@/tmp/test-libmultipath-abs-{pid}");
+    let socket_path_clone = socket_path.clone();
+
+    std::thread::spawn(move || {
+        let abstract_name = socket_path_clone.strip_prefix('@').unwrap();
+        let addr = SocketAddr::from_abstract_name(abstract_name.as_bytes()).unwrap();
+        let listener = UnixListener::bind_addr(&addr).unwrap();
+        if let Ok((stream, _)) = listener.accept() {
+            let mut s = stream;
+            let cmd = read_command(&s);
+            assert_eq!(cmd.trim_end_matches('\0'), "show maps json");
+
+            let reply = "{\"maps\": []}";
+            let reply_bytes = reply.as_bytes();
+            let reply_len = (reply_bytes.len() + 1) as u64;
+            s.write_all(&reply_len.to_le_bytes()).unwrap();
+            s.write_all(reply_bytes).unwrap();
+            s.write_all(&[0u8]).unwrap();
+        }
+    });
+
+    std::thread::sleep(Duration::from_millis(50));
+
+    let conn = libmultipath::MultipathConnection::with_socket(&socket_path);
+    assert!(
+        conn.is_ok(),
+        "Failed to connect to abstract socket: {:?}",
+        conn.err()
+    );
+    let conn = conn.unwrap();
+
+    let reply = conn.send_command("show maps json", None);
+    assert!(reply.is_ok(), "Failed to send command: {:?}", reply.err());
+    let reply = reply.unwrap();
+    assert_eq!(reply, "{\"maps\": []}");
 }

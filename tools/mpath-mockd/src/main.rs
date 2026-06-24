@@ -248,7 +248,7 @@ fn main() {
     let file_counters = Arc::new(FileCounters::new());
 
     // Create socket listener
-    let listener = match create_abstract_listener(&cli.socket) {
+    let listener = match create_socket_listener(&cli.socket) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("Error creating socket: {e}");
@@ -257,7 +257,12 @@ fn main() {
     };
 
     if cli.verbose {
-        eprintln!("Listening on abstract namespace socket: {}", cli.socket);
+        let socket = &cli.socket;
+        if socket.starts_with('@') {
+            eprintln!("Listening on abstract namespace socket: {socket}");
+        } else {
+            eprintln!("Listening on filesystem socket: {socket}");
+        }
         eprintln!("PID: {}", std::process::id());
     }
 
@@ -289,20 +294,30 @@ fn main() {
     }
 }
 
-/// Creates an abstract namespace socket listener
-fn create_abstract_listener(socket_path: &str) -> io::Result<UnixListener> {
-    let normalized = socket_path.strip_prefix('@').unwrap_or(socket_path);
-    if normalized == "org/kernel/linux/storage/multipathd"
-        || normalized == "/org/kernel/linux/storage/multipathd"
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "Cannot bind to the real system multipathd socket path",
-        ));
+/// Creates a socket listener (abstract or normal Unix filesystem socket)
+fn create_socket_listener(socket_path: &str) -> io::Result<UnixListener> {
+    if let Some(abstract_name) = socket_path.strip_prefix('@') {
+        if abstract_name == "org/kernel/linux/storage/multipathd"
+            || abstract_name == "/org/kernel/linux/storage/multipathd"
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Cannot bind to the real system multipathd socket path",
+            ));
+        }
+        let addr = SocketAddr::from_abstract_name(abstract_name.as_bytes())?;
+        UnixListener::bind_addr(&addr)
+    } else {
+        if socket_path == "/org/kernel/linux/storage/multipathd" {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Cannot bind to the real system multipathd socket path",
+            ));
+        }
+        // Remove existing filesystem socket file if it exists
+        let _ = std::fs::remove_file(socket_path);
+        UnixListener::bind(socket_path)
     }
-
-    let addr = SocketAddr::from_abstract_name(normalized.as_bytes())?;
-    UnixListener::bind_addr(&addr)
 }
 
 /// Handles a single client connection

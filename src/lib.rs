@@ -1120,14 +1120,12 @@ mod tests {
         let active_luns: HashSet<String> = vec!["mpatha+mpathb".to_string()].into_iter().collect();
 
         // 1. Both mpatha and mpathb are alive -> expect no failure, no fencing
-        let steps_both_healthy = vec![
-            ScenarioStep {
-                multipath_file: "all_active_running.json",
-                active_luns: active_luns.clone(),
-                expected_failures: 0,
-                expected_fencing: false,
-            },
-        ];
+        let steps_both_healthy = vec![ScenarioStep {
+            multipath_file: "all_active_running.json",
+            active_luns: active_luns.clone(),
+            expected_failures: 0,
+            expected_fencing: false,
+        }];
         run_scenario(/*max_failures*/ 3, &[], &steps_both_healthy);
 
         // 2. mpatha fails, mpathb remains healthy -> should trigger fencing since one of the involved multipath devices fails
@@ -1168,7 +1166,9 @@ mod tests {
                 uuid: "uuid-a".to_string(),
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
-                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("active".to_string()),
+                    }]),
                 }]),
             },
             MultipathMap {
@@ -1176,7 +1176,9 @@ mod tests {
                 uuid: "uuid-b".to_string(),
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
-                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("active".to_string()),
+                    }]),
                 }]),
             },
             MultipathMap {
@@ -1184,7 +1186,9 @@ mod tests {
                 uuid: "uuid-c".to_string(),
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
-                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("active".to_string()),
+                    }]),
                 }]),
             },
         ];
@@ -1200,7 +1204,9 @@ mod tests {
                 uuid: "uuid-a".to_string(),
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("failed".to_string()),
-                    paths: Some(vec![MpathPath { dm_st: Some("failed".to_string()) }]),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("failed".to_string()),
+                    }]),
                 }]),
             },
             MultipathMap {
@@ -1208,7 +1214,9 @@ mod tests {
                 uuid: "uuid-b".to_string(),
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
-                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("active".to_string()),
+                    }]),
                 }]),
             },
             MultipathMap {
@@ -1216,7 +1224,9 @@ mod tests {
                 uuid: "uuid-c".to_string(),
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
-                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("active".to_string()),
+                    }]),
                 }]),
             },
         ];
@@ -1247,7 +1257,9 @@ mod tests {
                 uuid: "uuid-a".to_string(),
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
-                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("active".to_string()),
+                    }]),
                 }]),
             },
             MultipathMap {
@@ -1255,7 +1267,9 @@ mod tests {
                 uuid: "uuid-b".to_string(),
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
-                    paths: Some(vec![MpathPath { dm_st: Some("active".to_string()) }]),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("active".to_string()),
+                    }]),
                 }]),
             },
             MultipathMap {
@@ -1263,7 +1277,9 @@ mod tests {
                 uuid: "uuid-c".to_string(),
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("failed".to_string()),
-                    paths: Some(vec![MpathPath { dm_st: Some("failed".to_string()) }]),
+                    paths: Some(vec![MpathPath {
+                        dm_st: Some("failed".to_string()),
+                    }]),
                 }]),
             },
         ];

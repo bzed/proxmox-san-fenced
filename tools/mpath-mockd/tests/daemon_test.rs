@@ -631,3 +631,52 @@ fn test_daemon_refuses_system_socket() {
         "Daemon should have failed to start (non-zero exit code)"
     );
 }
+
+#[test]
+fn test_daemon_filesystem_socket() {
+    let pid = std::process::id();
+    let custom_socket = format!("/tmp/test-mpath-mockd-fs-{pid}");
+    let mut daemon = Command::new(daemon_path())
+        .arg("--socket")
+        .arg(&custom_socket)
+        .arg("--test-data-dir")
+        .arg(test_data_dir())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start daemon with filesystem socket");
+
+    // Wait for the daemon to start
+    let mut ready = false;
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(2) {
+        if daemon.try_wait().is_ok_and(|o| o.is_some()) {
+            break;
+        }
+        // Try to connect using mpath-query
+        let result = Command::new(query_path())
+            .arg("--socket")
+            .arg(&custom_socket)
+            .arg("-c")
+            .arg("show maps json")
+            .arg("-o")
+            .arg("/dev/null")
+            .status();
+
+        if let Ok(status) = result {
+            if status.success() {
+                ready = true;
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    daemon.kill().ok();
+    daemon.wait().ok();
+
+    // Clean up filesystem socket file
+    let _ = std::fs::remove_file(&custom_socket);
+
+    assert!(ready, "Daemon with filesystem socket should be ready");
+}

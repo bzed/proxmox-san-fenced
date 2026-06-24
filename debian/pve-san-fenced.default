@@ -10,7 +10,7 @@
 # PVE_SAN_DISCOVERY_INTERVAL=60
 
 # Multipathd socket path
-# PVE_SAN_SOCKET=/org/kernel/linux/storage/multipathd
+# PVE_SAN_SOCKET=@/org/kernel/linux/storage/multipathd
 
 # SysRq character to trigger fencing (default is 'c' for crash/panic)
 # PVE_SAN_SYSRQ_CHAR=c
