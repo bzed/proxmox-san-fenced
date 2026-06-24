@@ -246,7 +246,7 @@ pub async fn trigger_fencing(sysrq_char: &str) {
 
         if c == 's' {
             warn!("SAN FENCER: Waiting for sync to complete...");
-            tokio::time::sleep(Duration::from_secs(/*secs*/ 2)).await;
+            tokio::time::sleep(Duration::from_secs(/*secs*/ 1)).await;
         }
     }
 

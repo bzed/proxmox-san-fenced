@@ -50,7 +50,7 @@ Configuration options can be customized in `/etc/default/pve-san-fenced`:
 - `PVE_SAN_MAX_FAILURES`: Number of consecutive failures before fencing (default: 6).
 - `PVE_SAN_SOCKET`: Path to the `multipathd` abstract socket (default: `@/org/kernel/linux/storage/multipathd`).
 - `PVE_SAN_NODE_NAME`: The name of the local Proxmox VE node (default: system hostname).
-- `PVE_SAN_SYSRQ_CHAR`: Comma-separated list of SysRq characters to send sequentially (default: `s,b` for sync followed by reboot. A sync `'s'` causes a 2-second sleep).
+- `PVE_SAN_SYSRQ_CHAR`: Comma-separated list of SysRq characters to send sequentially (default: `s,b` for sync followed by reboot. A sync `'s'` causes a 1-second sleep).
 - `PVE_SAN_TEST_MODE`: Run in test/dry-run mode without actually writing to SysRq (default: empty).
 
 ## Development and Testing

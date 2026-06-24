@@ -12,8 +12,8 @@
 # Multipathd socket path
 # PVE_SAN_SOCKET=@/org/kernel/linux/storage/multipathd
 
-# SysRq character to trigger fencing (default is 'c' for crash/panic)
-# PVE_SAN_SYSRQ_CHAR=c
+# SysRq character to trigger fencing (default is 's,b' for sync and reboot)
+# PVE_SAN_SYSRQ_CHAR=s,b
 
 # Set to true to run in test/dry-run mode (does not trigger SysRq kernel panic)
 # PVE_SAN_TEST_MODE=false

@@ -39,7 +39,7 @@ The name of the local Proxmox VE node. Default is the local hostname. Must exist
 Command or path to use for Proxmox VE API queries. Default is "pvesh".
 .TP
 .BI \-\-sysrq\-char ", " \-\-sysrq\-chars " sequence"
-Comma-separated list of characters to write to /proc/sysrq-trigger when fencing. Default is "s,b" (sync followed by reboot). Any sync ('s') triggers a 2-second sleep to wait for the sync to complete.
+Comma-separated list of characters to write to /proc/sysrq-trigger when fencing. Default is "s,b" (sync followed by reboot). Any sync ('s') triggers a 1-second sleep to wait for the sync to complete.
 .TP
 .B \-t ", " \-\-test\-mode
 Run the daemon in test/dry-run mode. Fencing decisions and transitions are logged, but the reboot/panic is not triggered.
