@@ -14,21 +14,7 @@ use log::{debug, error, info, warn};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::path::Path;
 use std::time::Duration;
-
-#[derive(Deserialize, Debug, Clone)]
-struct LsblkDevice {
-    name: String,
-    #[serde(rename = "type")]
-    device_type: String,
-    children: Option<Vec<LsblkDevice>>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct LsblkOutput {
-    blockdevices: Option<Vec<LsblkDevice>>,
-}
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct MultipathOutput {
@@ -56,47 +42,6 @@ struct MpathPath {
     dm_st: Option<String>,
 }
 
-/// Recursively traverses the lsblk device tree to build a map of device names
-/// to their parent multipath device names (e.g. "storage-pool-001-vm--104--disk--0.qcow2" -> {"mpatha", "mpathb"}).
-fn build_mpath_map(
-    devices: &[LsblkDevice],
-    current_mpath: Option<&str>,
-    depth: u32,
-    map: &mut HashMap<String, HashSet<String>>,
-) {
-    if depth > 32 {
-        warn!("Exceeded maximum recursion depth of 32 in build_mpath_map");
-        return;
-    }
-    for dev in devices {
-        let next_mpath = if dev.device_type == "mpath" {
-            Some(dev.name.as_str())
-        } else {
-            current_mpath
-        };
-
-        if let Some(mpath) = next_mpath {
-            map.entry(dev.name.clone())
-                .or_default()
-                .insert(mpath.to_string());
-        }
-
-        if let Some(children) = &dev.children {
-            build_mpath_map(children, next_mpath, depth + 1, map);
-        }
-    }
-}
-
-/// Converts a Proxmox storage identifier (e.g., "vg:lv") to the device-mapper
-/// format (e.g., "vg-lv_doubled" where single dashes in lv are doubled).
-fn storage_to_dm_name(storage: &str) -> String {
-    if let Some((vg, lv)) = storage.split_once(':') {
-        format!("{vg}-{}", lv.replace("-", "--"))
-    } else {
-        storage.to_string()
-    }
-}
-
 /// Discovers multipath devices in use by running VMs
 #[tracing::instrument]
 pub async fn discover_in_use_mpaths(
@@ -110,34 +55,6 @@ pub async fn discover_in_use_mpaths(
         let client = libpve_san::PveSanClient::with_node_and_pvesh(node, pvesh_command)?;
         let storage_info = client.get_san_storage_info().await?;
         debug!("Discovered storage info: {:?}", storage_info);
-
-        // 2. Fetch lsblk tree (either mock data or command execution)
-        let lsblk_json = if let Ok(test_data_dir) = env::var("PVE_SAN_TEST_DATA_DIR") {
-            let path = Path::new(&test_data_dir).join("lsblk.json");
-            tokio::fs::read_to_string(path).await?
-        } else {
-            let output = tokio::process::Command::new("lsblk")
-                .args(["-o", "NAME,TYPE", "-J"])
-                .output()
-                .await?;
-            if !output.status.success() {
-                let err_msg = String::from_utf8_lossy(&output.stderr);
-                return Err(format!("lsblk command failed: {err_msg}").into());
-            }
-            String::from_utf8(output.stdout)?
-        };
-
-        let lsblk_output: LsblkOutput = serde_json::from_str(&lsblk_json)?;
-        let mut mpath_map = HashMap::new();
-        if let Some(devices) = lsblk_output.blockdevices {
-            build_mpath_map(
-                &devices,
-                /*current_mpath*/ None,
-                /*depth*/ 0,
-                &mut mpath_map,
-            );
-        }
-        debug!("Built multipath-to-disk map: {:?}", mpath_map);
 
         let mut maps_by_name_or_uuid = HashMap::new();
         if debug_mode {
@@ -160,27 +77,15 @@ pub async fn discover_in_use_mpaths(
             }
         }
 
-        // 3. Map running VM disks to their parent multipath devices
+        // 2. Map running VM disks to their parent multipath devices using storage_info
         let mut active_mpaths = HashSet::new();
-        for vm in storage_info.vms {
+        for vm in &storage_info.vms {
             if vm.status == "running" {
                 for disk in &vm.disks {
-                    let dm_name = storage_to_dm_name(&disk.storage);
-                    let mut matched_mpaths = None;
-                    if let Some(mpaths) = mpath_map.get(&dm_name) {
-                        matched_mpaths = Some(mpaths);
-                    } else if let Some(mpaths) = mpath_map.get(&disk.storage) {
-                        matched_mpaths = Some(mpaths);
-                    } else if let Some(mpaths) = dm_name
-                        .strip_prefix("/dev/mapper/")
-                        .and_then(|dm| mpath_map.get(dm))
-                    {
-                        matched_mpaths = Some(mpaths);
-                    }
-
-                    if let Some(mpaths) = matched_mpaths {
+                    if let Some(dm_name) = &disk.device_mapper_name {
+                        let mpaths: Vec<String> = dm_name.split(" / ").map(String::from).collect();
                         if debug_mode {
-                            for mpath in mpaths {
+                            for mpath in &mpaths {
                                 let state = if let Some(map) = maps_by_name_or_uuid.get(mpath) {
                                     if is_map_dead(map) {
                                         "failed"
@@ -200,13 +105,11 @@ pub async fn discover_in_use_mpaths(
                         }
 
                         if mpaths.len() > 1 {
-                            let mut sorted_mpaths: Vec<String> = mpaths.iter().cloned().collect();
+                            let mut sorted_mpaths = mpaths;
                             sorted_mpaths.sort();
                             active_mpaths.insert(sorted_mpaths.join("+"));
-                        } else {
-                            for mpath in mpaths {
-                                active_mpaths.insert(mpath.clone());
-                            }
+                        } else if let Some(mpath) = mpaths.first() {
+                            active_mpaths.insert(mpath.clone());
                         }
                     }
                 }
@@ -487,7 +390,7 @@ impl Fencer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashSet;
     use std::env;
     use std::path::PathBuf;
 
@@ -504,124 +407,6 @@ mod tests {
     /// Get the path to the pvesh-mock binary
     fn pvesh_mock_path() -> PathBuf {
         workspace_root().join("target/debug/pvesh-mock")
-    }
-
-    #[test]
-    fn test_storage_to_dm_name() {
-        assert_eq!(
-            super::storage_to_dm_name("storage-pool-001:vm-104-disk-0.qcow2"),
-            "storage-pool-001-vm--104--disk--0.qcow2"
-        );
-        assert_eq!(
-            super::storage_to_dm_name("storage-nvme-001:vm-141-disk-0"),
-            "storage-nvme-001-vm--141--disk--0"
-        );
-        assert_eq!(
-            super::storage_to_dm_name("local-lvm:vm-100-disk-0"),
-            "local-lvm-vm--100--disk--0"
-        );
-        assert_eq!(
-            super::storage_to_dm_name("some-direct-device"),
-            "some-direct-device"
-        );
-    }
-
-    #[test]
-    fn test_build_mpath_map() {
-        let devices = vec![
-            LsblkDevice {
-                name: "sda".to_string(),
-                device_type: "disk".to_string(),
-                children: Some(vec![LsblkDevice {
-                    name: "mpatha".to_string(),
-                    device_type: "mpath".to_string(),
-                    children: Some(vec![
-                        LsblkDevice {
-                            name: "storage-pool-001-vm--104--disk--0.qcow2".to_string(),
-                            device_type: "lvm".to_string(),
-                            children: None,
-                        },
-                        LsblkDevice {
-                            name: "storage-pool-001-vm--116--disk--0.qcow2".to_string(),
-                            device_type: "lvm".to_string(),
-                            children: None,
-                        },
-                    ]),
-                }]),
-            },
-            LsblkDevice {
-                name: "sdb".to_string(),
-                device_type: "disk".to_string(),
-                children: Some(vec![LsblkDevice {
-                    name: "mpathb".to_string(),
-                    device_type: "mpath".to_string(),
-                    children: Some(vec![LsblkDevice {
-                        name: "storage-pool-001-vm--104--disk--0.qcow2".to_string(),
-                        device_type: "lvm".to_string(),
-                        children: None,
-                    }]),
-                }]),
-            },
-        ];
-
-        let mut mpath_map = HashMap::new();
-        super::build_mpath_map(
-            &devices,
-            /*current_mpath*/ None,
-            /*depth*/ 0,
-            &mut mpath_map,
-        );
-
-        // LV vm--104--disk--0 is spanned across mpatha and mpathb
-        let mpaths_104 = mpath_map
-            .get("storage-pool-001-vm--104--disk--0.qcow2")
-            .unwrap();
-        assert_eq!(mpaths_104.len(), 2);
-        assert!(mpaths_104.contains("mpatha"));
-        assert!(mpaths_104.contains("mpathb"));
-
-        let mpaths_116 = mpath_map
-            .get("storage-pool-001-vm--116--disk--0.qcow2")
-            .unwrap();
-        assert_eq!(mpaths_116.len(), 1);
-        assert!(mpaths_116.contains("mpatha"));
-    }
-
-    #[test]
-    fn test_build_mpath_map_recursion_limit() {
-        // Construct a deeply nested structure (35 levels)
-        let mut root = LsblkDevice {
-            name: "level_35".to_string(),
-            device_type: "lvm".to_string(),
-            children: None,
-        };
-        for i in (1..35).rev() {
-            root = LsblkDevice {
-                name: format!("level_{i}"),
-                device_type: "lvm".to_string(),
-                children: Some(vec![root]),
-            };
-        }
-        // Root is level_0 (mpath)
-        let root = LsblkDevice {
-            name: "level_0".to_string(),
-            device_type: "mpath".to_string(),
-            children: Some(vec![root]),
-        };
-
-        let mut mpath_map = HashMap::new();
-        super::build_mpath_map(
-            &[root],
-            /*current_mpath*/ None,
-            /*depth*/ 0,
-            &mut mpath_map,
-        );
-
-        // Innermost children (level 33 and beyond) should not be mapped
-        assert!(!mpath_map.contains_key("level_34"));
-        assert!(!mpath_map.contains_key("level_33"));
-        // level_32 (depth 32) should be mapped
-        assert!(mpath_map.contains_key("level_32"));
     }
 
     #[test]

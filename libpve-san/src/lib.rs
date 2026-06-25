@@ -28,6 +28,8 @@ use std::collections::{HashMap, HashSet};
 use std::process::{Command, Stdio};
 use thiserror::Error;
 
+pub(crate) mod sysfs;
+
 /// Custom error type for the library
 #[derive(Error, Debug)]
 pub enum PveSanError {
@@ -291,10 +293,30 @@ impl PveSanClient {
 
         // Retrieve lsblk tree to build a mapping from child devices to parent mpaths
         let mut mpath_map: HashMap<String, HashSet<String>> = HashMap::new();
-        if let Some(json_content) = self.get_lsblk_json().await {
-            if let Ok(lsblk_output) = serde_json::from_str::<LsblkOutput>(&json_content) {
-                if let Some(devices) = lsblk_output.blockdevices {
-                    self.build_mpath_map(&devices, None, 0, &mut mpath_map);
+        if std::env::var("PVE_SAN_TEST_DATA_DIR").is_ok() {
+            if let Some(json_content) = self.get_lsblk_json().await {
+                if let Ok(lsblk_output) = serde_json::from_str::<LsblkOutput>(&json_content) {
+                    if let Some(devices) = lsblk_output.blockdevices {
+                        self.build_mpath_map(&devices, None, 0, &mut mpath_map);
+                    }
+                }
+            }
+        } else {
+            if let Ok(devices) = BlockDevice::list() {
+                for dev in devices {
+                    if dev.name.starts_with("dm-") {
+                        let dev_name = &dev.name;
+                        let sys_path = format!("/sys/block/{dev_name}/dm/name");
+                        if let Ok(mapped_name) = std::fs::read_to_string(sys_path) {
+                            let mapped_name = mapped_name.trim().to_string();
+                            let mpaths =
+                                sysfs::find_multipaths_for_dm(dev_name, &mut HashSet::new());
+                            if !mpaths.is_empty() {
+                                mpath_map.insert(mapped_name, mpaths.clone());
+                                mpath_map.insert(dev_name.clone(), mpaths);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -383,13 +405,7 @@ impl PveSanClient {
             let path = std::path::Path::new(&test_data_dir).join("lsblk.json");
             std::fs::read_to_string(path).ok()
         } else {
-            let output = Command::new("lsblk")
-                .args(["-o", "NAME,TYPE", "-J"])
-                .output();
-            match output {
-                Ok(out) if out.status.success() => String::from_utf8(out.stdout).ok(),
-                _ => None,
-            }
+            None
         }
     }
 
