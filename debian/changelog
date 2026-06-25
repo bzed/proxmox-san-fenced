@@ -1,3 +1,12 @@
+pve-san-fenced (0.1.1) unstable; urgency=medium
+
+  * [3251774] ci: add Podman container build script and Dockerfile
+  * [08eeb26] Support and test both abstract namespace and normal Unix filesystem sockets
+  * [27a6099] Update default SysRq characters to s,b and reduce sync sleep to 1 second
+  * [ce439dc] Add gbp.conf
+
+ -- Bernd Zeimetz <bzed@debian.org>  Thu, 25 Jun 2026 09:21:13 +0200
+
 pve-san-fenced (0.1.0) unstable; urgency=medium
 
   * Initial release of the Proxmox VE SAN fencing daemon and helper tools.
