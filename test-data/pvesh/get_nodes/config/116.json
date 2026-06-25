@@ -13,7 +13,7 @@
    "net2": "virtio=02:00:00:00:00:39,VLAN328",
    "onboot": 1,
    "ostype": "l26",
-   "scsi0": "storage-pool-001:vm-116-disk-0.qcow2,size=50G",
+   "scsi0": "storage-pool-002:vm-116-disk-0.qcow2,size=50G",
    "scsihw": "virtio-scsi-pci",
    "smbios1": "uuid=00000000-0000-0000-0000-000000000000",
    "sockets": 8,
