@@ -41,9 +41,9 @@ enum QueryMode {
 #[command(version = "0.1.0")]
 #[command(about = "Retrieve SAN/FC storage information from Proxmox VE hosts", long_about = None)]
 struct Cli {
-    /// The Proxmox node name to query
+    /// The Proxmox node name to query (optional in local-files mode)
     #[arg(long, short = 'n')]
-    node: String,
+    node: Option<String>,
 
     /// The output file (default: stdout)
     #[arg(long, short = 'o')]
@@ -65,9 +65,23 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
 
+    let node = match cli.node {
+        Some(n) => n,
+        None => {
+            if cli.mode == QueryMode::Pvesh {
+                eprintln!("Error: Node name is required in pvesh mode");
+                process::exit(1);
+            }
+            std::fs::read_to_string("/proc/sys/kernel/hostname")
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "localhost".to_string())
+        }
+    };
+
     if cli.verbose {
-        eprintln!("Querying node: {}", cli.node);
-        eprintln!("Query mode: {:?}", cli.mode);
+        let mode_val = cli.mode;
+        eprintln!("Querying node: {node}");
+        eprintln!("Query mode: {mode_val:?}");
     }
 
     let pve_mode = match cli.mode {
@@ -76,7 +90,7 @@ fn main() {
     };
 
     // Retrieve SAN storage information
-    let result = libpve_san::get_san_storage_info_sync_with_mode(&cli.node, pve_mode);
+    let result = libpve_san::get_san_storage_info_sync_with_mode(&node, pve_mode);
 
     match result {
         Ok(data) => {

@@ -265,6 +265,58 @@ fn test_pve_san_query_mode_local_files() {
     assert_eq!(vmids, expected);
 }
 
+#[test]
+fn test_pve_san_query_no_node_local_files() {
+    let output = run_pve_san_query(&["--mode", "local-files"]);
+    let json_output = String::from_utf8(output).expect("Output should be valid UTF-8");
+    let data: serde_json::Value =
+        serde_json::from_str(&json_output).expect("Output should be valid JSON");
+
+    let vms = data["vms"].as_array().expect("vms should be an array");
+    assert!(!vms.is_empty());
+}
+
+#[test]
+fn test_pve_san_query_no_node_pvesh_fails() {
+    let count = RUN_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let unique_temp = env::temp_dir().join(format!(
+        "pve-san-query-test-run-{}-{}",
+        std::process::id(),
+        count
+    ));
+    fs::create_dir_all(&unique_temp).unwrap();
+    let script_path = unique_temp.join("pvesh");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let script_content = format!("#!/bin/sh\nexec {} \"$@\"", pvesh_mock_path().display());
+        fs::write(&script_path, script_content).unwrap();
+        let mut perms = fs::metadata(&script_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).unwrap();
+
+        let path = env::var_os("PATH").unwrap();
+        let new_path = format!("{}:{}", unique_temp.display(), path.to_string_lossy());
+        let _guard = EnvGuard::new(&["PATH", "PVE_SAN_TEST_DATA_DIR"]);
+        env::set_var("PATH", new_path);
+        env::set_var("PVE_SAN_TEST_DATA_DIR", test_data_dir());
+
+        let output = Command::new(pve_san_query_path())
+            .args(["--mode", "pvesh"])
+            .current_dir(workspace_root())
+            .output()
+            .expect("Failed to run pve-san-query");
+
+        fs::remove_dir_all(&unique_temp).ok();
+
+        assert!(
+            !output.status.success(),
+            "pve-san-query should fail when node is omitted in pvesh mode"
+        );
+    }
+}
+
 struct EnvGuard {
     saved_vars: Vec<(String, Option<std::ffi::OsString>)>,
 }
