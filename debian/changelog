@@ -1,3 +1,9 @@
+pve-san-fenced (0.1.2) unstable; urgency=medium
+
+  * [cfafcb6] Add debug log mode to log discovered VMs, storages, and multipath devices and their states
+
+ -- Bernd Zeimetz <bzed@debian.org>  Thu, 25 Jun 2026 10:08:00 +0200
+
 pve-san-fenced (0.1.1) unstable; urgency=medium
 
   * [3251774] ci: add Podman container build script and Dockerfile
