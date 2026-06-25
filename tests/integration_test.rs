@@ -518,3 +518,82 @@ fn test_integration_debug_log_mode() {
         "Logs did not contain the debug discovery output:\n{logs}"
     );
 }
+
+#[test]
+fn test_integration_hanging_multipathd() {
+    let mut ctx = TestContext::new("hanging_multipathd", "pve001");
+
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mockd_bin = workspace.join("target/debug/mpath-mockd");
+    let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
+
+    let child = Command::new(mockd_bin)
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--test-data-dir")
+        .arg(test_data_dir)
+        .arg("--hang")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start mpath-mockd in hang mode");
+
+    ctx.mock_daemon = Some(child);
+
+    std::thread::sleep(Duration::from_millis(200));
+
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let pvesh_mock_bin = workspace.join("target/debug/pvesh-mock");
+    let pvesh_test_data = workspace.join("test-data/pvesh");
+    let nodes_dir = ctx.temp_dir.join("nodes");
+
+    let mut cmd = Command::new(fencer_bin);
+    cmd.arg("--node-name")
+        .arg("pve001")
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--pvesh-command")
+        .arg(pvesh_mock_bin)
+        .arg("--poll-interval")
+        .arg("1")
+        .arg("--discovery-interval")
+        .arg("10")
+        .arg("--max-failures")
+        .arg("3")
+        .env("PVE_SAN_TEST_DATA_DIR", pvesh_test_data)
+        .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
+        .env("PVE_SAN_FENCE_DRY_RUN", "1")
+        .env("RUST_LOG", "debug")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let child = cmd.spawn().expect("Failed to start pve-san-fenced");
+    ctx.target_daemon = Some(child);
+
+    std::thread::sleep(Duration::from_secs(6));
+
+    let mut fencer = ctx.target_daemon.take().unwrap();
+    assert!(
+        fencer.try_wait().unwrap().is_none(),
+        "Fencer daemon exited prematurely during socket hang"
+    );
+
+    fencer.kill().ok();
+    let output = fencer.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+
+    assert!(
+        full_logs.contains("Failed to query multipathd"),
+        "Logs did not warn about failed multipathd query during hang:\n{full_logs}"
+    );
+    assert!(
+        full_logs.contains("Timeout waiting for reply"),
+        "Logs did not contain timeout details:\n{full_logs}"
+    );
+    assert!(
+        !full_logs.contains("TEST MODE: Fencing decision reached"),
+        "Fencing should NOT have been triggered during daemon query timeouts:\n{full_logs}"
+    );
+}

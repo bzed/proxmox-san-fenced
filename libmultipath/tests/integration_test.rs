@@ -320,3 +320,35 @@ fn test_abstract_socket_communication() {
     let reply = reply.unwrap();
     assert_eq!(reply, "{\"maps\": []}");
 }
+
+#[test]
+fn test_mock_server_hanging_socket() {
+    let pid = std::process::id();
+    let socket_path = format!("@/tmp/test-libmultipath-hang-{pid}");
+    let socket_path_clone = socket_path.clone();
+
+    std::thread::spawn(move || {
+        let abstract_name = socket_path_clone.strip_prefix('@').unwrap();
+        let addr = SocketAddr::from_abstract_name(abstract_name.as_bytes()).unwrap();
+        let listener = UnixListener::bind_addr(&addr).unwrap();
+        if let Ok((stream, _)) = listener.accept() {
+            let mut s = stream;
+            let _cmd = read_command(&s);
+            let len = 100u64;
+            s.write_all(&len.to_le_bytes()).unwrap();
+            std::thread::sleep(Duration::from_secs(3600));
+        }
+    });
+
+    std::thread::sleep(Duration::from_millis(50));
+
+    let result = libmultipath::send_multipath_command_to_socket_with_timeout(
+        &socket_path,
+        "show maps json",
+        /*timeout_ms*/ 50,
+    );
+
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+}

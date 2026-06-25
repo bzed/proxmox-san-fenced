@@ -25,6 +25,7 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
+use std::time::Duration;
 
 use std::io::{Read, Write};
 use std::os::linux::net::SocketAddrExt;
@@ -61,6 +62,10 @@ struct Cli {
     /// Example: --file-map "show maps json=all_active_running.json,failed_all_timeout.json"
     #[arg(long, value_name = "command=file[s]", action = clap::ArgAction::Append)]
     file_map: Vec<String>,
+
+    /// Hang/idle after sending a partial response to simulate a slow/hanging multipathd
+    #[arg(long)]
+    hang: bool,
 }
 
 /// Tracks the current index for cycling through files for each command
@@ -283,12 +288,15 @@ fn main() {
         // Spawn a thread to handle the connection
         let command_responses_clone = command_responses.clone();
         let file_counters_clone = file_counters.clone();
+        let verbose = cli.verbose;
+        let hang = cli.hang;
         thread::spawn(move || {
             handle_connection(
                 stream,
                 command_responses_clone,
                 file_counters_clone,
-                cli.verbose,
+                verbose,
+                hang,
             );
         });
     }
@@ -326,6 +334,7 @@ fn handle_connection(
     command_responses: Arc<RwLock<HashMap<String, Vec<String>>>>,
     file_counters: Arc<FileCounters>,
     verbose: bool,
+    hang: bool,
 ) {
     // Read command length (8 bytes, little-endian)
     let mut len_bytes = [0u8; 8];
@@ -406,6 +415,28 @@ fn handle_connection(
     let resp_with_null = [resp_bytes, &[0u8]].concat(); // Add null terminator
     let resp_len = resp_with_null.len() as u64;
     let len_bytes = resp_len.to_le_bytes();
+
+    if hang {
+        if verbose {
+            eprintln!("Hang mode enabled. Sending partial response and idling...");
+        }
+        if let Err(e) = stream.write_all(&len_bytes) {
+            if verbose {
+                eprintln!("Error sending response length: {e}");
+            }
+            return;
+        }
+        let partial_len = std::cmp::min(10, resp_with_null.len());
+        if let Err(e) = stream.write_all(&resp_with_null[..partial_len]) {
+            if verbose {
+                eprintln!("Error sending partial response: {e}");
+            }
+            return;
+        }
+        loop {
+            thread::sleep(Duration::from_secs(3600));
+        }
+    }
 
     // Send response length
     if let Err(e) = stream.write_all(&len_bytes) {
