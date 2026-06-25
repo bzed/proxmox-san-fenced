@@ -716,13 +716,23 @@ pub async fn get_san_storage_info_with_pvesh(
 }
 
 pub fn get_san_storage_info_sync(node: &str) -> PveSanResult<SanStorageInfo> {
+    get_san_storage_info_sync_with_mode(node, PveMode::LocalFiles)
+}
+
+/// Get SAN storage info synchronously with a specific query mode.
+pub fn get_san_storage_info_sync_with_mode(
+    node: &str,
+    mode: PveMode,
+) -> PveSanResult<SanStorageInfo> {
+    let config = PveSanConfig::with_node(node)?.with_mode(mode);
+    let client = PveSanClient::new(config);
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        handle.block_on(async { get_san_storage_info(node).await })
+        handle.block_on(async { client.get_san_storage_info().await })
     } else {
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .map_err(|e| PveSanError::RuntimeError(e.to_string()))?;
-        rt.block_on(async { get_san_storage_info(node).await })
+        rt.block_on(async { client.get_san_storage_info().await })
     }
 }
 

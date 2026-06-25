@@ -20,9 +20,19 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use clap::Parser;
-use libpve_san::get_san_storage_info_sync;
 use std::io::{self, Write};
 use std::process;
+
+/// Query modes for retrieving VM configurations
+#[derive(clap::ValueEnum, Clone, Debug, Copy, PartialEq, Eq)]
+enum QueryMode {
+    /// Retrieve VM information using pvesh command
+    #[value(name = "pvesh")]
+    Pvesh,
+    /// Retrieve VM information from local config files only (default)
+    #[value(name = "local-files")]
+    LocalFiles,
+}
 
 /// Query Proxmox VE hosts for SAN/FC storage information
 #[derive(Parser, Debug)]
@@ -43,6 +53,10 @@ struct Cli {
     #[arg(long, short = 'p')]
     pretty: bool,
 
+    /// Query mode to use (default: local-files)
+    #[arg(long, short = 'm', value_enum, default_value_t = QueryMode::LocalFiles)]
+    mode: QueryMode,
+
     /// Verbose output
     #[arg(long, short = 'v')]
     verbose: bool,
@@ -53,10 +67,16 @@ fn main() {
 
     if cli.verbose {
         eprintln!("Querying node: {}", cli.node);
+        eprintln!("Query mode: {:?}", cli.mode);
     }
 
+    let pve_mode = match cli.mode {
+        QueryMode::Pvesh => libpve_san::PveMode::Pvesh,
+        QueryMode::LocalFiles => libpve_san::PveMode::LocalFiles,
+    };
+
     // Retrieve SAN storage information
-    let result = get_san_storage_info_sync(&cli.node);
+    let result = libpve_san::get_san_storage_info_sync_with_mode(&cli.node, pve_mode);
 
     match result {
         Ok(data) => {

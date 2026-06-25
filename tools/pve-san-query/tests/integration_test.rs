@@ -227,6 +227,44 @@ fn test_pve_san_query_pretty_output() {
         serde_json::from_str(&json_output).expect("Pretty output should still be valid JSON");
 }
 
+#[test]
+fn test_pve_san_query_mode_pvesh() {
+    let output = run_pve_san_query(&["--node", "pve001", "--mode", "pvesh"]);
+    let json_output = String::from_utf8(output).expect("Output should be valid UTF-8");
+    let data: serde_json::Value =
+        serde_json::from_str(&json_output).expect("Output should be valid JSON");
+
+    let vms = data["vms"].as_array().expect("vms should be an array");
+    let mut vmids: Vec<u64> = vms.iter().map(|vm| vm["vmid"].as_u64().unwrap()).collect();
+    vmids.sort_unstable();
+
+    let mut expected = vec![
+        132, 145, 141, 105, 144, 147, 131, 122, 114, 126, 116, 104, 133, 140, 117,
+    ];
+    expected.sort_unstable();
+
+    assert_eq!(vmids, expected);
+}
+
+#[test]
+fn test_pve_san_query_mode_local_files() {
+    let output = run_pve_san_query(&["--node", "pve001", "--mode", "local-files"]);
+    let json_output = String::from_utf8(output).expect("Output should be valid UTF-8");
+    let data: serde_json::Value =
+        serde_json::from_str(&json_output).expect("Output should be valid JSON");
+
+    let vms = data["vms"].as_array().expect("vms should be an array");
+    let mut vmids: Vec<u64> = vms.iter().map(|vm| vm["vmid"].as_u64().unwrap()).collect();
+    vmids.sort_unstable();
+
+    let mut expected = vec![
+        104, 105, 114, 116, 117, 122, 126, 130, 131, 132, 133, 140, 141, 144, 145, 147,
+    ];
+    expected.sort_unstable();
+
+    assert_eq!(vmids, expected);
+}
+
 struct EnvGuard {
     saved_vars: Vec<(String, Option<std::ffi::OsString>)>,
 }
