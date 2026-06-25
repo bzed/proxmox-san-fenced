@@ -83,6 +83,18 @@ struct Cli {
     /// Enable debug log mode to log discovered VMs, storages, and multipath devices with their state on each discovery run
     #[arg(long, env = "PVE_SAN_DEBUG")]
     debug: bool,
+
+    /// Maximum number of consecutive discovery failures before applying backoff (0 = no backoff)
+    #[arg(long, env = "PVE_SAN_DISCOVERY_MAX_RETRIES", default_value = "5")]
+    discovery_max_retries: u64,
+
+    /// Base delay in seconds for exponential backoff
+    #[arg(long, env = "PVE_SAN_DISCOVERY_BACKOFF_BASE", default_value = "1")]
+    discovery_backoff_base: u64,
+
+    /// Maximum backoff delay in seconds
+    #[arg(long, env = "PVE_SAN_DISCOVERY_BACKOFF_MAX", default_value = "30")]
+    discovery_backoff_max: u64,
 }
 
 fn extract_defaults_block(config: &str) -> Option<&str> {
@@ -300,6 +312,9 @@ async fn main() {
     let socket_clone = cli.socket.clone();
     let debug_mode = cli.debug;
     let discovery_interval = cli.discovery_interval;
+    let max_retries = cli.discovery_max_retries;
+    let backoff_base = cli.discovery_backoff_base;
+    let backoff_max = cli.discovery_backoff_max;
 
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -308,28 +323,70 @@ async fn main() {
             .expect("Failed to build tokio runtime for discovery thread");
 
         rt.block_on(async {
+            let mut consecutive_failures = 0u64;
             loop {
-                match discover_in_use_mpaths(
-                    &node_clone,
-                    &pvesh_cmd_clone,
-                    Some(&socket_clone),
-                    debug_mode,
-                )
-                .await
-                {
-                    Ok(mpaths) => {
-                        let mut lock = active_luns_clone.write().await;
-                        if *lock != mpaths {
-                            let prev = &*lock;
-                            info!("Active multipath devices changed. Previous: {prev:?}, New: {mpaths:?}");
-                            *lock = mpaths;
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    discover_in_use_mpaths(
+                        &node_clone,
+                        &pvesh_cmd_clone,
+                        Some(&socket_clone),
+                        debug_mode,
+                    )
+                }));
+
+                match result {
+                    Ok(fut) => {
+                        match fut.await {
+                            Ok(mpaths) => {
+                                consecutive_failures = 0;
+                                let mut lock = active_luns_clone.write().await;
+                                if *lock != mpaths {
+                                    let prev = &*lock;
+                                    info!("Active multipath devices changed. Previous: {prev:?}, New: {mpaths:?}");
+                                    *lock = mpaths;
+                                }
+                            }
+                            Err(e) => {
+                                consecutive_failures += 1;
+                                error!("Error discovering active multipath devices: {e}");
+                            }
                         }
                     }
-                    Err(e) => {
-                        error!("Error discovering active multipath devices: {e}");
+                    Err(panic_err) => {
+                        consecutive_failures += 1;
+                        let error_msg = if let Some(s) = panic_err.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else if let Some(s) = panic_err.downcast_ref::<String>() {
+                            s.clone()
+                        } else {
+                            "Unknown panic error".to_string()
+                        };
+                        error!("Panic in discovery thread: {error_msg}");
                     }
                 }
-                tokio::time::sleep(Duration::from_secs(discovery_interval)).await;
+
+                // Apply exponential backoff if we have consecutive failures and max_retries > 0
+                if consecutive_failures > 0 && max_retries > 0 {
+                    if consecutive_failures >= max_retries {
+                        // Calculate backoff delay with exponential growth, capped at backoff_max
+                        let backoff_exp = consecutive_failures.saturating_sub(max_retries);
+                        let backoff_seconds = std::cmp::min(
+                            backoff_base.saturating_mul(2u64.pow(backoff_exp as u32)),
+                            backoff_max,
+                        );
+                        warn!(
+                            "Discovery thread: {} consecutive failures, backing off for {} seconds",
+                            consecutive_failures, backoff_seconds
+                        );
+                        tokio::time::sleep(Duration::from_secs(backoff_seconds)).await;
+                    } else {
+                        // Normal interval
+                        tokio::time::sleep(Duration::from_secs(discovery_interval)).await;
+                    }
+                } else {
+                    // Normal interval
+                    tokio::time::sleep(Duration::from_secs(discovery_interval)).await;
+                }
             }
         });
     });
@@ -430,6 +487,9 @@ mod tests {
             test_mode: true,
             sysrq_char: "c".to_string(),
             debug: false,
+            discovery_max_retries: 5,
+            discovery_backoff_base: 1,
+            discovery_backoff_max: 30,
         };
         assert_eq!(cli, expected);
 
@@ -472,6 +532,9 @@ mod tests {
             test_mode: true,
             sysrq_char: "c".to_string(),
             debug: false,
+            discovery_max_retries: 5,
+            discovery_backoff_base: 1,
+            discovery_backoff_max: 30,
         };
         assert_eq!(cli_default, expected_default);
 

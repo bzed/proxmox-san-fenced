@@ -36,15 +36,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 33. Discovery thread has no backoff on repeated failures — can cause log spam and resource exhaustion
 
-**File**: `src/main.rs:310-334` (discovery thread loop)
+**File**: `src/main.rs:310-380` (discovery thread loop)
 **Severity**: CRITICAL
-**Status**: OPEN
+**Status**: FIXED
 
 **Description**: The discovery thread runs an infinite loop that calls `discover_in_use_mpaths()` with no backoff on failure. If the pvesh command is unavailable, the node directory doesn't exist, or any transient error occurs, the thread immediately retries. With a 60-second discovery interval, this is manageable, but if the interval is set very low via `PVE_SAN_DISCOVERY_INTERVAL`, the thread could generate excessive load. More critically, if `discover_in_use_mpaths` panics (e.g., due to a bug in config parsing), the thread silently dies with no recovery, leaving `active_luns` stale indefinitely.
 
 **Impact**: Log spam, potential resource exhaustion at low intervals, silent failure of discovery.
 
-**Recommendation**: Add exponential backoff with a maximum cap on consecutive failures. Add a panic recovery mechanism using `std::panic::catch_unwind`.
+**Resolution**: Added exponential backoff with configurable parameters (`PVE_SAN_DISCOVERY_MAX_RETRIES`, `PVE_SAN_DISCOVERY_BACKOFF_BASE`, `PVE_SAN_DISCOVERY_BACKOFF_MAX`). The discovery thread now tracks consecutive failures and applies exponential backoff once the max retries threshold is exceeded, with a maximum cap on the backoff delay. Additionally, added panic recovery using `std::panic::catch_unwind` to prevent silent thread death on panics, with proper error logging.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
