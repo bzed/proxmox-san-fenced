@@ -33,35 +33,37 @@ class pve_san_fenced (
     ensure => installed,
   }
 
+  $config_content = @("CONFIG")
+    # Configuration for pve-san-fenced daemon
+
+    # Poll interval in seconds
+    PVE_SAN_POLL_INTERVAL=${poll_interval}
+
+    # Maximum consecutive failures before fencing
+    PVE_SAN_MAX_FAILURES=${max_failures}
+
+    # Discovery interval in seconds
+    PVE_SAN_DISCOVERY_INTERVAL=${discovery_interval}
+
+    # Multipathd socket path
+    PVE_SAN_SOCKET=${socket}
+
+    # SysRq character to trigger fencing (default is 's,b' for sync and reboot)
+    PVE_SAN_SYSRQ_CHAR=${sysrq_char}
+
+    # Set to true to run in test/dry-run mode (does not trigger SysRq kernel panic)
+    PVE_SAN_TEST_MODE=${test_mode}
+
+    # Set to true to enable verbose debug logging of discovered VMs, storages, and multipaths on each discovery run
+    PVE_SAN_DEBUG=${debug}
+    |-CONFIG
+
   file { '/etc/default/pve-san-fenced':
     ensure  => file,
     owner   => 'root',
     group   => 'root',
     mode    => '0644',
-    content => @("CONFIG"),
-# Configuration for pve-san-fenced daemon
-
-# Poll interval in seconds
-PVE_SAN_POLL_INTERVAL=${poll_interval}
-
-# Maximum consecutive failures before fencing
-PVE_SAN_MAX_FAILURES=${max_failures}
-
-# Discovery interval in seconds
-PVE_SAN_DISCOVERY_INTERVAL=${discovery_interval}
-
-# Multipathd socket path
-PVE_SAN_SOCKET=${socket}
-
-# SysRq character to trigger fencing (default is 's,b' for sync and reboot)
-PVE_SAN_SYSRQ_CHAR=${sysrq_char}
-
-# Set to true to run in test/dry-run mode (does not trigger SysRq kernel panic)
-PVE_SAN_TEST_MODE=${test_mode}
-
-# Set to true to enable verbose debug logging of discovered VMs, storages, and multipaths on each discovery run
-PVE_SAN_DEBUG=${debug}
-|-CONFIG
+    content => $config_content,
     require => Package[$package_name],
     notify  => Service[$service_name],
   }
