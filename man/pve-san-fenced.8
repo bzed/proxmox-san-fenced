@@ -71,6 +71,39 @@ Comma-separated list of characters to write to /proc/sysrq-trigger when fencing.
 .TP
 .B PVE_SAN_FENCE_DRY_RUN
 If set, the daemon acts as if running in test mode internally and exits instead of writing to the SysRq trigger.
+.SH MULTIPATH CONFIGURATION
+For the fencing daemon to operate safely and reliably,
+.B multipathd
+must be configured with specific settings. Add or update the following recommendations in the
+.B defaults
+section of
+.I /etc/multipath.conf\fR:
+.PP
+.RS
+.nf
+defaults {
+    no_path_retry "queue"
+    dev_loss_tmo "infinity"
+    polling_interval 5
+    fast_io_fail_tmo 5
+}
+.fi
+.RE
+.PP
+.TP
+.BI no_path_retry " queue"
+Keeps I/O queued when all paths are lost. This allows the fencing daemon time to monitor path state and decide whether to fence the node. If set to \fBfail\fR, I/O fails immediately, potentially causing VM file systems to switch to read-only before fencing occurs.
+.TP
+.BI dev_loss_tmo " infinity"
+Prevents \fBmultipathd\fR from deleting the device mapper mapping after a timeout. If the device was deleted, the VM could not recover even if paths are restored, and the daemon would lose its ability to track the device.
+.TP
+.BI polling_interval " 5"
+Aligns multipath daemon's path checking interval with the fencing daemon's poll interval.
+.TP
+.BI fast_io_fail_tmo " 5"
+Promotes fast I/O failure detection.
+.PP
+The \fBpve-san-fenced\fR daemon automatically inspects these settings on startup and logs warnings if they do not match the recommended values.
 .SH FILES
 .TP
 .I /proc/sys/kernel/sysrq
