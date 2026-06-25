@@ -66,6 +66,16 @@ impl MultipathConnection {
     /// # Returns
     ///
     /// Returns the reply as a String on success.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use libmultipath::MultipathConnection;
+    ///
+    /// let conn = MultipathConnection::new().unwrap();
+    /// let reply = conn.send_command("show maps json", Some(4000)).unwrap();
+    /// println!("Reply: {}", reply);
+    /// ```
     pub fn send_command(&self, command: &str, timeout_ms: Option<u64>) -> io::Result<String> {
         Self::send_command_on_stream(&self.stream, command, timeout_ms)
     }
@@ -234,6 +244,15 @@ impl MultipathConnection {
 /// # Returns
 ///
 /// Returns the reply as a String on success.
+///
+/// # Examples
+///
+/// ```no_run
+/// use libmultipath::send_multipath_command;
+///
+/// let reply = send_multipath_command("show maps json").unwrap();
+/// println!("Reply: {}", reply);
+/// ```
 pub fn send_multipath_command(command: &str) -> io::Result<String> {
     let conn = MultipathConnection::new()?;
     conn.send_command(command, Some(DEFAULT_REPLY_TIMEOUT_MS))

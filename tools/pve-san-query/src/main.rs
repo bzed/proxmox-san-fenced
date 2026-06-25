@@ -187,3 +187,27 @@ fn validate_output_path(path: &str) -> Result<std::path::PathBuf, String> {
 
     Ok(abs_path)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_output_path() {
+        // Allowed paths
+        assert!(validate_output_path("/dev/null").is_ok());
+        assert!(validate_output_path("/tmp/test_output.json").is_ok());
+        assert!(validate_output_path("/var/tmp/test_output.json").is_ok());
+
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let cwd_file = cwd.join("local_file.json");
+        assert!(validate_output_path(cwd_file.to_str().unwrap()).is_ok());
+
+        // Disallowed paths (path traversal)
+        assert!(validate_output_path("/tmp/../etc/passwd").is_err());
+        assert!(validate_output_path("some/../../path").is_err());
+
+        // Disallowed paths (outside permitted dirs)
+        assert!(validate_output_path("/etc/passwd").is_err());
+    }
+}
