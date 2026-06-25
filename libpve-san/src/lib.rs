@@ -24,7 +24,7 @@
 use log::warn;
 use lsblk::BlockDevice;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::{Command, Stdio};
 use thiserror::Error;
 
@@ -116,6 +116,10 @@ pub struct SanStorageInfo {
     /// List of block devices (from lsblk)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub block_devices: Option<Vec<BlockDeviceInfo>>,
+
+    /// Discovered multipath devices associated with each VMID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multipath_devices: Option<HashMap<String, Vec<String>>>,
 }
 
 /// Simplified block device information
@@ -285,7 +289,19 @@ impl PveSanClient {
         let node = self.config.node.clone();
         let vms = self.list_running_vms().await?;
 
+        // Retrieve lsblk tree to build a mapping from child devices to parent mpaths
+        let mut mpath_map: HashMap<String, HashSet<String>> = HashMap::new();
+        if let Some(json_content) = self.get_lsblk_json().await {
+            if let Ok(lsblk_output) = serde_json::from_str::<LsblkOutput>(&json_content) {
+                if let Some(devices) = lsblk_output.blockdevices {
+                    self.build_mpath_map(&devices, None, 0, &mut mpath_map);
+                }
+            }
+        }
+
         let mut vm_infos = Vec::new();
+        let mut multipath_devices = HashMap::new();
+
         for (vmid, status) in vms {
             match self.get_vm_config(vmid).await {
                 Ok(config_map) => {
@@ -294,7 +310,49 @@ impl PveSanClient {
                         .cloned()
                         .unwrap_or_else(|| format!("vm-{vmid}"));
 
-                    let disks = self.extract_disks(&config_map)?;
+                    let mut disks = self.extract_disks(&config_map)?;
+                    let mut vm_mpaths = HashSet::new();
+
+                    for disk in &mut disks {
+                        let dm_name = self.storage_to_dm_name(&disk.storage);
+                        let mut matched_mpaths = None;
+
+                        if let Some(mpaths) = mpath_map.get(&dm_name) {
+                            matched_mpaths = Some(mpaths);
+                        } else if let Some(mpaths) = mpath_map.get(&disk.storage) {
+                            matched_mpaths = Some(mpaths);
+                        } else if let Some(mpaths) = dm_name
+                            .strip_prefix("/dev/mapper/")
+                            .and_then(|name| mpath_map.get(name))
+                        {
+                            matched_mpaths = Some(mpaths);
+                        }
+
+                        if let Some(mpaths) = matched_mpaths {
+                            let mut mpath_list: Vec<String> = mpaths.iter().cloned().collect();
+                            mpath_list.sort();
+
+                            let mapper_name = mpath_list.join(" / ");
+                            let path_name = mpath_list
+                                .iter()
+                                .map(|name| format!("/dev/mapper/{name}"))
+                                .collect::<Vec<_>>()
+                                .join(" / ");
+
+                            disk.device_mapper_name = Some(mapper_name);
+                            disk.device_path = Some(path_name);
+
+                            for mpath in mpaths {
+                                vm_mpaths.insert(mpath.clone());
+                            }
+                        }
+                    }
+
+                    if !vm_mpaths.is_empty() {
+                        let mut sorted_mpaths: Vec<String> = vm_mpaths.into_iter().collect();
+                        sorted_mpaths.sort();
+                        multipath_devices.insert(vmid.to_string(), sorted_mpaths);
+                    }
 
                     vm_infos.push(VmInfo {
                         vmid,
@@ -316,7 +374,61 @@ impl PveSanClient {
             node,
             vms: vm_infos,
             block_devices: Some(block_devices),
+            multipath_devices: Some(multipath_devices),
         })
+    }
+
+    async fn get_lsblk_json(&self) -> Option<String> {
+        if let Ok(test_data_dir) = std::env::var("PVE_SAN_TEST_DATA_DIR") {
+            let path = std::path::Path::new(&test_data_dir).join("lsblk.json");
+            std::fs::read_to_string(path).ok()
+        } else {
+            let output = Command::new("lsblk")
+                .args(["-o", "NAME,TYPE", "-J"])
+                .output();
+            match output {
+                Ok(out) if out.status.success() => String::from_utf8(out.stdout).ok(),
+                _ => None,
+            }
+        }
+    }
+
+    fn build_mpath_map(
+        &self,
+        devices: &[LsblkDevice],
+        current_mpath: Option<&str>,
+        depth: u32,
+        map: &mut HashMap<String, HashSet<String>>,
+    ) {
+        if depth > 32 {
+            warn!("Exceeded maximum recursion depth of 32 in build_mpath_map");
+            return;
+        }
+        for dev in devices {
+            let next_mpath = if dev.device_type == "mpath" {
+                Some(dev.name.as_str())
+            } else {
+                current_mpath
+            };
+
+            if let Some(mpath) = next_mpath {
+                map.entry(dev.name.clone())
+                    .or_default()
+                    .insert(mpath.to_string());
+            }
+
+            if let Some(children) = &dev.children {
+                self.build_mpath_map(children, next_mpath, depth + 1, map);
+            }
+        }
+    }
+
+    fn storage_to_dm_name(&self, storage: &str) -> String {
+        if let Some((vg, lv)) = storage.split_once(':') {
+            format!("{vg}-{}", lv.replace("-", "--"))
+        } else {
+            storage.to_string()
+        }
     }
 
     #[tracing::instrument(skip(self))]
@@ -694,6 +806,19 @@ impl PveSanClient {
             _ => None,
         }
     }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct LsblkDevice {
+    name: String,
+    #[serde(rename = "type")]
+    device_type: String,
+    children: Option<Vec<LsblkDevice>>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct LsblkOutput {
+    blockdevices: Option<Vec<LsblkDevice>>,
 }
 
 #[tracing::instrument]

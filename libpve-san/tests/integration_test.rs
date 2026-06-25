@@ -212,6 +212,17 @@ fn test_library_with_mock_parse_vm_104() {
             let disk = virtio0.unwrap();
             assert_eq!(disk.storage, "storage-pool-001:vm-104-disk-0.qcow2");
             assert_eq!(disk.size_bytes, Some(50 * 1024 * 1024 * 1024)); // 50G
+            assert_eq!(disk.device_mapper_name, Some("mpatha / mpathb".to_string()));
+            assert_eq!(
+                disk.device_path,
+                Some("/dev/mapper/mpatha / /dev/mapper/mpathb".to_string())
+            );
+
+            // Check root-level multipath_devices section
+            assert_eq!(
+                info.multipath_devices.as_ref().and_then(|m| m.get("104")),
+                Some(&vec!["mpatha".to_string(), "mpathb".to_string()])
+            );
         }
         Err(e) => panic!("Failed to get SAN storage info: {}", e),
     }
