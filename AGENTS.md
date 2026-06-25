@@ -60,3 +60,7 @@ The goal is to develope a SAN fencing daemon for proxmox, including variouys hel
 
 - Create a plan before implementing it. With the brain of a QA agent, review your plan. Implement your plan.
 - Compare your implementation with the originally generated plan, if the plan was not properly implemented, keep working.
+
+## Versioning
+
+- Use Semantic Versioning 2.0.0.

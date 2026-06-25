@@ -306,9 +306,14 @@ impl PveSanClient {
 
         let mut vms = Vec::new();
         for item in data {
-            let vmid = item["vmid"].as_u64().ok_or_else(|| {
-                PveSanError::ListVmError("VMID is missing or not a number".to_string())
-            })?;
+            let vmid = item["vmid"]
+                .as_u64()
+                .or_else(|| item["vmid"].as_str().and_then(|s| s.parse::<u64>().ok()))
+                .or_else(|| item["subdir"].as_u64())
+                .or_else(|| item["subdir"].as_str().and_then(|s| s.parse::<u64>().ok()))
+                .ok_or_else(|| {
+                    PveSanError::ListVmError("VMID is missing or not a number".to_string())
+                })?;
             let status = item["status"].as_str().unwrap_or("unknown").to_string();
 
             if status == "running" {
@@ -843,5 +848,57 @@ mod tests {
         disks.sort_by(|a, b| a.device_id.cmp(&b.device_id));
         expected_disks.sort_by(|a, b| a.device_id.cmp(&b.device_id));
         assert_eq!(disks, expected_disks);
+    }
+
+    #[test]
+    fn test_parse_vms_from_qemu_json() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let test_data_path = manifest_dir
+            .parent()
+            .unwrap()
+            .join("test-data/pvesh/get_nodes/pve001_qemu.json");
+        let content = std::fs::read_to_string(test_data_path).unwrap();
+        let data: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap();
+
+        let mut extracted_vmids = Vec::new();
+        for item in data {
+            let vmid = item["vmid"]
+                .as_u64()
+                .or_else(|| item["vmid"].as_str().and_then(|s| s.parse::<u64>().ok()))
+                .or_else(|| item["subdir"].as_u64())
+                .or_else(|| item["subdir"].as_str().and_then(|s| s.parse::<u64>().ok()))
+                .unwrap();
+            let status = item["status"].as_str().unwrap_or("unknown").to_string();
+            if status == "running" {
+                extracted_vmids.push(vmid);
+            }
+        }
+
+        assert_eq!(
+            extracted_vmids,
+            vec![132, 145, 141, 105, 144, 147, 131, 122, 114, 126, 116, 104, 133, 140, 117]
+        );
+    }
+
+    #[test]
+    fn test_robust_vmid_parsing() {
+        let json_input = r#"[
+            {"vmid": 123, "status": "running"},
+            {"vmid": "456", "status": "running"},
+            {"subdir": 789, "status": "running"},
+            {"subdir": "999", "status": "running"}
+        ]"#;
+        let data: Vec<serde_json::Value> = serde_json::from_str(json_input).unwrap();
+        let mut extracted = Vec::new();
+        for item in data {
+            let vmid = item["vmid"]
+                .as_u64()
+                .or_else(|| item["vmid"].as_str().and_then(|s| s.parse::<u64>().ok()))
+                .or_else(|| item["subdir"].as_u64())
+                .or_else(|| item["subdir"].as_str().and_then(|s| s.parse::<u64>().ok()))
+                .unwrap();
+            extracted.push(vmid);
+        }
+        assert_eq!(extracted, vec![123, 456, 789, 999]);
     }
 }

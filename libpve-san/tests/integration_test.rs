@@ -385,3 +385,17 @@ fn test_vm_tags_preserved() {
         Err(e) => panic!("Failed to get SAN storage info: {}", e),
     }
 }
+
+#[test]
+fn test_vmid_extraction_from_pve001_qemu_json() {
+    let result = run_library_test("pve001").unwrap();
+    let mut vmids: Vec<_> = result.vms.iter().map(|vm| vm.vmid).collect();
+    vmids.sort_unstable();
+
+    let mut expected_vmids = vec![
+        132, 145, 141, 105, 144, 147, 131, 122, 114, 126, 116, 104, 133, 140, 117,
+    ];
+    expected_vmids.sort_unstable();
+
+    assert_eq!(vmids, expected_vmids);
+}
