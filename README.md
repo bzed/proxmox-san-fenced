@@ -20,6 +20,32 @@ The project consists of the following components:
 2. **Monitoring Phase**: At regular intervals (default: 5 seconds), it queries `multipathd` to get the path state of the monitored WWIDs.
 3. **Fencing Mechanism**: If all paths for any monitored WWID are down (i.e. state is `faulty`, `failed`, or `offline`) consecutively for a predefined threshold (default: 6 failures), the daemon immediately writes the configured SysRq sequence (default: `s,b` for sync followed by reboot) to `/proc/sysrq-trigger` to fence the node.
 
+## Recommended Multipath Configuration
+
+For the fencing daemon to operate safely and reliably, `multipathd` must be configured with specific settings. Add or update the following recommendations in the `defaults` section of `/etc/multipath.conf`:
+
+```text
+defaults {
+    # Keep queueing I/O when all paths are down. The fencing daemon will take
+    # care of rebooting/fencing if recovery fails.
+    no_path_retry "queue"
+
+    # Prevent multipathd from removing block devices when paths are lost.
+    dev_loss_tmo "infinity"
+
+    # Fast detection configuration
+    polling_interval 5
+    fast_io_fail_tmo 5
+}
+```
+
+- **`no_path_retry "queue"`**: Keeps I/O queued when all paths are lost. This allows the fencing daemon time to monitor path state and decide whether to fence the node. If set to `fail`, I/O fails immediately, potentially causing VM file systems to switch to read-only before fencing occurs.
+- **`dev_loss_tmo "infinity"`**: Prevents `multipathd` from deleting the device mapper mapping after a timeout. If the device was deleted, the VM could not recover even if paths are restored, and the daemon would lose its ability to track the device.
+- **`polling_interval 5`**: Aligns multipath daemon's path checking interval with the fencing daemon's poll interval.
+- **`fast_io_fail_tmo 5`**: Promotes fast I/O failure detection.
+
+The `pve-san-fenced` daemon automatically inspects these settings on startup and logs warnings if they do not match the recommended values.
+
 ## Installation & Configuration
 
 ### Debian Package Build
