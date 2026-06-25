@@ -12,6 +12,7 @@ pve-san-fenced \- SAN fencing daemon for Proxmox VE
 [\fB\-\-pvesh\-command\fR \fIcommand\fR]
 [\fB\-\-sysrq\-char\fR|\fB\-\-sysrq\-chars\fR \fIsequence\fR]
 [\fB\-t\fR | \fB\-\-test\-mode\fR]
+[\fB\-\-debug\fR]
 .SH DESCRIPTION
 .B pve-san-fenced
 is a daemon that monitors the health of SAN/FC multipath storage devices actively used by running VMs on a Proxmox VE node. If all paths to the storage are lost persistently across multiple cycles, the daemon initiates a reboot or kernel panic using the Linux SysRq trigger to prevent split-brain conditions or VM corruption (fencing).
@@ -30,7 +31,7 @@ Number of consecutive polling failures (where all paths are offline/failed) requ
 Specific WWIDs to monitor. If not specified, monitors all multipath maps in use by running VMs.
 .TP
 .BI \-\-socket " path"
-Multipathd abstract socket path to connect to. Default is @/org/kernel/linux/storage/multipathd.
+Multipathd socket path to connect to. Default is @/org/kernel/linux/storage/multipathd. Supports both abstract namespace sockets (prefixed with `@`) and standard Unix domain socket files.
 .TP
 .BI \-n ", " \-\-node\-name " name"
 The name of the local Proxmox VE node. Default is the local hostname. Must exist as a directory in /etc/pve/nodes.
@@ -43,6 +44,9 @@ Comma-separated list of characters to write to /proc/sysrq-trigger when fencing.
 .TP
 .B \-t ", " \-\-test\-mode
 Run the daemon in test/dry-run mode. Fencing decisions and transitions are logged, but the reboot/panic is not triggered.
+.TP
+.B \-\-debug
+Enable debug log mode to log discovered VMs, storages, and multipath devices with their state on each discovery run.
 .SH ENVIRONMENT
 .TP
 .B PVE_SAN_POLL_INTERVAL
@@ -55,7 +59,7 @@ Interval in seconds between rescanning running VMs and storage configurations. C
 Number of consecutive polling failures required before triggering the fencing mechanism. Corresponds to \fB\-\-max\-failures\fR.
 .TP
 .B PVE_SAN_SOCKET
-Multipathd abstract socket path to connect to. Corresponds to \fB\-\-socket\fR.
+Multipathd socket path to connect to. Corresponds to \fB\-\-socket\fR. Supports both abstract namespace sockets and standard Unix domain socket files.
 .TP
 .B PVE_SAN_NODE_NAME
 The name of the local Proxmox VE node. Corresponds to \fB\-\-node\-name\fR.
@@ -65,6 +69,9 @@ Command or path to use for Proxmox VE API queries. Corresponds to \fB\-\-pvesh\-
 .TP
 .B PVE_SAN_TEST_MODE
 If set (to a non-empty, non-false value), runs the daemon in test/dry-run mode. Corresponds to \fB\-t\fR, \fB\-\-test\-mode\fR.
+.TP
+.B PVE_SAN_DEBUG
+If set (to a non-empty, non-false value), enables debug log mode. Corresponds to \fB\-\-debug\fR.
 .TP
 .B PVE_SAN_SYSRQ_CHAR
 Comma-separated list of characters to write to /proc/sysrq-trigger when fencing. Corresponds to \fB\-\-sysrq\-char\fR / \fB\-\-sysrq\-chars\fR.

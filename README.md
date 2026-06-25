@@ -8,7 +8,7 @@ The project consists of the following components:
 
 - **`pve-san-fenced` (Daemon)**: The main background service that continuously monitors multipath maps in use by running VMs on the Proxmox VE node. If persistent, complete storage loss is detected, it triggers a hardware fence using the Linux SysRq trigger (`/proc/sysrq-trigger`).
 - **`libmultipath` (Library)**: A Rust library that communicates with `multipathd` via its abstract namespace Unix socket using the protocol defined by `libmpathcmd`.
-- **`libpve-san` (Library)**: A Rust library that queries Proxmox VE local VM configurations (via `pvesh`), resolves disk-to-device mapping using `lsblk`, and returns structured info.
+- **`libpve-san` (Library)**: A Rust library that queries Proxmox VE VM configurations (either directly from local files or via `pvesh`), resolves disk-to-device mapping using `/sys/block` sysfs traversal and the `lsblk` crate, and returns structured info.
 - **`pve-san-query` (Tool)**: A CLI tool to inspect the local Proxmox node's VM storage mappings in JSON format.
 - **`mpath-query` (Tool)**: A CLI tool that queries `multipathd` using commands like `show maps json` or `show config`.
 - **`mpath-mockd` (Mock Tool)**: A mock socket daemon used in tests to simulate `multipathd` behaviour.
@@ -74,10 +74,11 @@ Configuration options can be customized in `/etc/default/pve-san-fenced`:
 - `PVE_SAN_POLL_INTERVAL`: Check interval in seconds (default: 5).
 - `PVE_SAN_DISCOVERY_INTERVAL`: Discovery rescanning interval in seconds (default: 60).
 - `PVE_SAN_MAX_FAILURES`: Number of consecutive failures before fencing (default: 6).
-- `PVE_SAN_SOCKET`: Path to the `multipathd` abstract socket (default: `@/org/kernel/linux/storage/multipathd`).
+- `PVE_SAN_SOCKET`: Path to the `multipathd` Unix socket (default: `@/org/kernel/linux/storage/multipathd`). Supports both abstract namespace sockets (prefixed with `@`) and standard Unix domain socket files.
 - `PVE_SAN_NODE_NAME`: The name of the local Proxmox VE node (default: system hostname).
 - `PVE_SAN_SYSRQ_CHAR`: Comma-separated list of SysRq characters to send sequentially (default: `s,b` for sync followed by reboot. A sync `'s'` causes a 1-second sleep).
 - `PVE_SAN_TEST_MODE`: Run in test/dry-run mode without actually writing to SysRq (default: empty).
+- `PVE_SAN_DEBUG`: Enable verbose debug logging of discovered VMs, storages, and multipath devices and their states on each discovery run (default: empty).
 
 ## Development and Testing
 

@@ -45,6 +45,13 @@ pve-san-fenced/
 ├── Cargo.toml                    # Workspace manifest with shared dependencies
 ├── AGENTS.md                     # Coding guidelines and requirements
 ├── LICENSE                       # GNU AGPL v3 license
+├── PLAN.md                       # This document
+├── README.md                     # Project overview and user documentation
+├── src/
+│   ├── lib.rs                    # Core daemon library (Fencer, discover_in_use_mpaths, trigger_fencing)
+│   └── main.rs                   # Daemon entrypoint (CLI args, startup validation, main loop)
+├── tests/
+│   └── integration_test.rs       # Integration tests for the daemon
 ├── libmultipath/
 │   ├── Cargo.toml
 │   └── src/
@@ -54,7 +61,8 @@ pve-san-fenced/
 ├── libpve-san/
 │   ├── Cargo.toml
 │   ├── src/
-│   │   └── lib.rs                # Proxmox VE SAN information library
+│   │   ├── lib.rs                # Proxmox VE SAN information library
+│   │   └── sysfs.rs              # Sysfs block device traversal helpers
 │   └── tests/
 │       └── integration_test.rs   # Integration tests for libpve-san
 └── tools/
@@ -84,7 +92,11 @@ pve-san-fenced/
     ├── multipathd/                # Test data for multipathd mocking
     │   ├── show_maps_json/
     │   │   ├── all_active_running.json
-    │   │   └── failed_all_timeout.json
+    │   │   ├── mpatha_active_mpathb_failed.json
+    │   │   ├── failed_all_timeout.json
+    │   │   ├── disabled_pg_active_path.json
+    │   │   ├── failed_ghost_only.json
+    │   │   └── some_undef_some_active.json
     │   ├── show_config/
     │   │   └── show_config.txt
     │   ├── show_status/
@@ -93,15 +105,20 @@ pve-san-fenced/
     │   │   └── show_topology.txt
     │   └── list_maps/
     │       └── list_maps.txt
-    └── pvesh/                     # Test data for pvesh mocking
-        ├── get_nodes/
-        │   ├── pve001_qemu.json
-        │   ├── config/
-        │   │   ├── 104.json
-        │   │   ├── 105.json
-        │   │   ├── ...
-        │   │   └── 147.json
-        └── lsblk.json
+    ├── pvesh/                     # Test data for pvesh-mock
+    │   ├── get_nodes/
+    │   │   ├── pve001_qemu.json
+    │   │   └── config/
+    │   │       ├── 104.json
+    │   │       ├── 105.json
+    │   │       ├── ...
+    │   │       └── 147.json
+    │   └── lsblk.json             # Sample lsblk output used by tests to mock block device mapping
+    ├── pve/                       # Local PVE config files for local-files mode tests
+    │   └── local/
+    │       └── qemu-server/       # VM config files read in LocalFiles mode
+    └── sys/                       # Mock sysfs hierarchy for block device traversal tests
+        └── block/                 # dm-X directories with dm/name and slaves/ symlinks
 ```
 
 ---
@@ -118,7 +135,7 @@ pve-san-fenced/
 - None (uses standard library `std::os::unix::net` and `std::os::linux::net`)
 
 **Key Constants**:
-- `DEFAULT_SOCKET: &str = "/org/kernel/linux/storage/multipathd"` - Default abstract namespace socket path
+- `DEFAULT_SOCKET: &str = "@/org/kernel/linux/storage/multipathd"` - Default abstract namespace socket path
 - `MAX_REPLY_LEN: usize = 32 * 1024 * 1024` - Maximum reply length (32 MB, matching C implementation)
 - `DEFAULT_REPLY_TIMEOUT_MS: u64 = 4000` - Default reply timeout in milliseconds
 
@@ -273,12 +290,24 @@ pub struct SanStorageInfo {
     pub node: String,
     pub vms: Vec<VmInfo>,
     pub block_devices: Option<Vec<BlockDeviceInfo>>,
+    pub multipath_devices: Option<HashMap<String, Vec<String>>>,
+}
+
+/// Query mode for the PVE SAN client
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PveMode {
+    /// Query using pvesh command
+    Pvesh,
+    /// Query local configuration files only (default)
+    #[default]
+    LocalFiles,
 }
 
 #[derive(Debug, Clone)]
 pub struct PveSanConfig {
-    pub node: String,                // Required: node name to query
-    pub pvesh_command: String,       // Default: "pvesh"
+    node: String,
+    pvesh_command: String,
+    mode: PveMode,
 }
 ```
 
@@ -290,7 +319,9 @@ pub struct PveSanClient {
 }
 
 impl PveSanClient {
-    pub fn new(config: PveSanConfig) -> PveSanResult<Self>
+    pub fn new(config: PveSanConfig) -> Self
+    pub fn with_node(node: impl Into<String>) -> PveSanResult<Self>
+    pub fn with_node_and_pvesh(node: impl Into<String>, pvesh_command: &str) -> PveSanResult<Self>
 }
 ```
 
@@ -300,12 +331,13 @@ impl PveSanClient {
    - Main entry point that retrieves complete SAN storage info
    - Calls `list_running_vms()` to get VM list
    - For each running VM, calls `get_vm_config()` and `extract_disks()`
-   - Calls `get_block_devices()` to enumerate block devices via lsblk
+   - Resolves underlying device-mapper to multipath names using sysfs traversal of `/sys/block/{dm}/slaves/` (production) or `lsblk.json` mock data (test hook via `PVE_SAN_TEST_DATA_DIR`)
    - Returns combined `SanStorageInfo` structure
 
 2. `list_running_vms(&self) -> PveSanResult<Vec<(u64, String)>>` (async)
-   - Uses pvesh to list VMs at `/nodes/{node}/qemu`
-   - Parses JSON output to extract VMID and status
+   - In `LocalFiles` mode: reads `/etc/pve/local/qemu-server/*.conf` directly and `/etc/pve/local/qemu-server/` for running status
+   - In `Pvesh` mode: uses pvesh to list VMs at `/nodes/{node}/qemu`
+   - Parses output to extract VMID and status
    - Filters to only running VMs
 
 3. `get_vm_config(&self, vmid: u64) -> PveSanResult<HashMap<String, String>>` (async)
@@ -368,6 +400,10 @@ pub async fn get_san_storage_info_with_pvesh(
     pvesh_command: &str,
 ) -> PveSanResult<SanStorageInfo>
 pub fn get_san_storage_info_sync(node: &str) -> PveSanResult<SanStorageInfo>
+pub fn get_san_storage_info_sync_with_mode(
+    node: &str,
+    mode: PveMode,
+) -> PveSanResult<SanStorageInfo>
 pub fn get_san_storage_info_sync_with_pvesh(
     node: &str,
     pvesh_command: &str,
@@ -581,9 +617,9 @@ struct Cli {
 #[derive(Parser, Debug)]
 #[command(name = "pve-san-query")]
 struct Cli {
-    /// The Proxmox node name to query
+    /// The Proxmox node name to query (optional in local-files mode)
     #[arg(long, short = 'n')]
-    node: String,
+    node: Option<String>,
 
     /// The output file (default: stdout)
     #[arg(long, short = 'o')]
@@ -592,6 +628,10 @@ struct Cli {
     /// Pretty print JSON output
     #[arg(long, short = 'p')]
     pretty: bool,
+
+    /// Query mode to use (default: local-files)
+    #[arg(long, short = 'm', value_enum, default_value_t = QueryMode::LocalFiles)]
+    mode: QueryMode,
 
     /// Verbose output
     #[arg(long, short = 'v')]
@@ -602,14 +642,15 @@ struct Cli {
 **Behavior**:
 
 1. Parse CLI arguments
-2. If verbose, print node being queried
-3. Call `get_san_storage_info_sync(&node)` from libpve-san
-4. On success:
+2. Determine node name: use `--node` if provided; if mode is `pvesh` and node is absent, exit with error; otherwise default to system hostname
+3. If verbose, print node being queried and query mode
+4. Call `get_san_storage_info_sync_with_mode(&node, pve_mode)` from libpve-san
+5. On success:
    - Serialize result to JSON (pretty or compact based on --pretty)
-   - If --output specified, write to file
+   - If --output specified, write to validated file path
    - Otherwise write to stdout
    - Print byte count to stderr if verbose
-5. On error:
+6. On error:
    - Print error to stderr
    - If verbose, print troubleshooting hints (pvesh availability, API access, node existence, network)
    - Exit with code 1
@@ -734,7 +775,7 @@ test-data/
     │       ├── 105.json                 # VM config for VMID 105
     │       ├── ...
     │       └── 147.json                 # VM config for VMID 147
-    └── lsblk.json                       # Sample lsblk output (not currently used)
+    └── lsblk.json                       # Sample lsblk output used by tests to mock block devices mapping
 ```
 
 **Important Constraints**:
@@ -766,9 +807,11 @@ test-data/
 - `--max-failures` (default: 6): Number of consecutive failures before fencing (6 * 5s = 30s).
 - `--target-wwids` (optional, multiple): Specific WWIDs to monitor. If empty, monitors maps discovered to be in use.
 - `--socket` (default: `DEFAULT_SOCKET` from libmultipath): Multipath socket to connect to.
-- `--node` (required): The name of the Proxmox node to query for VM data.
+- `--node-name` / `-n` (optional, default: system hostname): The name of the Proxmox node to query for VM data.
+- `--pvesh-command` (default: "pvesh"): Command to use for Proxmox VE API queries.
 - `--test-mode` / `-t` (optional, flag): Runs in test mode (only logs changes and decisions, does not trigger reboot/fencing).
-- `--sysrq-char` / `--sysrq-chars` (default: `s,b`): A comma-separated list of letters to write sequentially to `/proc/sysrq-trigger`. For example, `s,b` triggers a filesystem sync followed by an immediate reboot. For each `s` (sync) in the list, the daemon sleeps for 2 seconds to wait for the sync to happen.
+- `--sysrq-char` / `--sysrq-chars` (default: `s,b`): A comma-separated list of letters to write sequentially to `/proc/sysrq-trigger`. For example, `s,b` triggers a filesystem sync followed by an immediate reboot. For each `s` (sync) in the list, the daemon sleeps for 1 second to wait for the sync to happen.
+- `--debug` (optional, flag): Enable debug log mode to log discovered VMs, storages, and multipath devices with their state on each discovery run.
 
 **Data Structures**:
 
@@ -787,7 +830,13 @@ struct MultipathMap {
 
 #[derive(Deserialize)]
 struct PathGroup {
-    state: String, // "active", "offline", "failed", etc.
+    dm_st: Option<String>,   // "active", "offline", "failed", etc.
+    paths: Option<Vec<MpathPath>>,
+}
+
+#[derive(Deserialize)]
+struct MpathPath {
+    dm_st: Option<String>,   // "active", "failed", "faulty", "ghost", etc.
 }
 ```
 
@@ -800,14 +849,14 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
 
 1. **Discovery Task (VM & Storage Mapping)**:
    - Construct an async loop that executes every `DISCOVERY_INTERVAL` seconds.
-   - **Timeout Protection**: Wrap the entire discovery execution (`get_san_storage_info` and `lsblk`) in a `tokio::time::timeout` (e.g., 30 seconds). If SAN fails, block IO can cause these commands to hang in an uninterruptible sleep (D-state). If a timeout occurs, retain the previous `HashSet` of active LUNs.
-   - Uses `libpve-san` (`get_san_storage_info`) to read the configs of all running VMs and discover their storage endpoints.
-   - Uses `lsblk` (via `libpve-san`) to discover underlying block devices and device mapper layers.
+   - **Timeout Protection**: Wrap the entire discovery execution in a `tokio::time::timeout` (30 seconds). If SAN fails, block IO can cause these operations to hang. If a timeout occurs, retain the previous `HashSet` of active LUNs.
+   - Uses `libpve-san` (`get_san_storage_info`) to read the configs of all running VMs and discover their storage endpoints in `LocalFiles` mode (reads `/etc/pve/local/qemu-server/*.conf` directly).
+   - Resolves underlying device-mapper to multipath names by traversing `/sys/block/{dm}/slaves/` symlinks recursively until a `dm/name` file starting with `mpath` is found.
    - Finds the multipath device mapper device (`dm_name` / `WWID`) associated with the storage if it is in use by a running VM.
    - Logs any change in the active multipath devices set at `info` level (showing the previous and new sets).
    - Replaces the shared `HashSet` of active LUNs with the newly discovered in-use multipath devices.
-   - This separate thread ensures that if `lsblk` or `pvesh` block due to underlying storage IO lockups during a SAN failure, it does not prevent the monitoring thread from executing the fencing action.
-   - Logs discovered storage configurations, built lsblk mapping, and final active multipath sets at `debug` level.
+   - This separate thread ensures that if sysfs traversal or local file reads block due to underlying storage IO lockups during a SAN failure, it does not prevent the monitoring thread from executing the fencing action.
+   - Logs discovered storage configurations, built multipath mapping, and final active multipath sets at `debug` level.
 
 2. **Monitoring Task (Failure Detection and Fencing)**:
    - Construct an async loop that executes every `POLL_INTERVAL` seconds using `tokio::time::interval`.

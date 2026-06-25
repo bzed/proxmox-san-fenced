@@ -3,7 +3,8 @@
 pve-san-query \- Query Proxmox VE hosts for SAN/FC storage information
 .SH SYNOPSIS
 .B pve-san-query
-\fB\-\-node\fR \fIname\fR
+[\fB\-\-node\fR \fIname\fR]
+[\fB\-\-mode\fR \fImode\fR]
 [\fB\-\-output\fR \fIfile\fR]
 [\fB\-\-pretty\fR]
 [\fB\-v\fR | \fB\-\-verbose\fR]
@@ -13,7 +14,10 @@ is a command-line tool that retrieves details of running virtual machines, their
 .SH OPTIONS
 .TP
 .BI \-n ", " \-\-node " name"
-The Proxmox VE node name to query. This option is required.
+The Proxmox VE node name to query. If query mode is \fBlocal-files\fR, this parameter is optional and defaults to the system hostname. If query mode is \fBpvesh\fR, this parameter is required.
+.TP
+.BI \-m ", " \-\-mode " mode"
+The query mode to use: \fBlocal-files\fR (default, queries local configuration files directly under /etc/pve) or \fBpvesh\fR (queries via the pvesh utility).
 .TP
 .BI \-o ", " \-\-output " file"
 The path to the file where query results should be saved. If omitted, prints output to stdout.
