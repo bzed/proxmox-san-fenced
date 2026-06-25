@@ -54,7 +54,7 @@ The goal is to develope a SAN fencing daemon for proxmox, including variouys hel
 
 - Always commit your changes with an appropriate description.
 - Never edit/squash/ammend old commits, either revert them or commit fixes with an appropriate description.
-
+- Commits: First line is a short summary, <= 70 characters. Then an empty line, long description follows then. Be verbose and precise.
 
 ## Planning
 
