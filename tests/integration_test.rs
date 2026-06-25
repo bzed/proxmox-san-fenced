@@ -461,3 +461,60 @@ fn test_integration_invalid_sysrq_chars() {
         "Logs did not contain expected error: {full_logs}"
     );
 }
+
+#[test]
+fn test_integration_debug_log_mode() {
+    let mut ctx = TestContext::new("debug_log_mode", "pve001");
+
+    // Start mock daemon with maps always reporting healthy paths
+    start_mockd(&mut ctx, "show maps json=all_active_running.json");
+
+    // Start fencer daemon with debug log mode enabled using env variable PVE_SAN_DEBUG=true
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let pvesh_mock_bin = workspace.join("target/debug/pvesh-mock");
+    let test_data_dir = workspace.join("test-data/pvesh");
+    let nodes_dir = ctx.temp_dir.join("nodes");
+
+    let mut cmd = Command::new(fencer_bin);
+    cmd.arg("--node-name")
+        .arg("pve001")
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--pvesh-command")
+        .arg(pvesh_mock_bin)
+        .arg("--poll-interval")
+        .arg("1")
+        .arg("--discovery-interval")
+        .arg("1")
+        .arg("--max-failures")
+        .arg("3")
+        .env("PVE_SAN_TEST_DATA_DIR", test_data_dir)
+        .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
+        .env("PVE_SAN_FENCE_DRY_RUN", "1")
+        .env("PVE_SAN_DEBUG", "true")
+        .env("RUST_LOG", "info")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let child = cmd
+        .spawn()
+        .expect("Failed to start pve-san-fenced with PVE_SAN_DEBUG");
+    ctx.target_daemon = Some(child);
+
+    // Wait for the discovery run to happen and log
+    std::thread::sleep(Duration::from_secs(2));
+
+    // Stop and get output
+    let mut fencer = ctx.target_daemon.take().unwrap();
+    fencer.kill().ok();
+    let output = fencer.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+
+    assert!(
+        logs.contains("Discovered VM:") && logs.contains("state:"),
+        "Logs did not contain the debug discovery output:\n{logs}"
+    );
+}

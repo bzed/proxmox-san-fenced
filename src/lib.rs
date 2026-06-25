@@ -102,6 +102,8 @@ fn storage_to_dm_name(storage: &str) -> String {
 pub async fn discover_in_use_mpaths(
     node: &str,
     pvesh_command: &str,
+    socket_path: Option<&str>,
+    debug_mode: bool,
 ) -> Result<HashSet<String>, Box<dyn std::error::Error + Send + Sync>> {
     let fut = async {
         // 1. Get VM and storage info using libpve-san
@@ -137,11 +139,32 @@ pub async fn discover_in_use_mpaths(
         }
         debug!("Built multipath-to-disk map: {:?}", mpath_map);
 
+        let mut maps_by_name_or_uuid = HashMap::new();
+        if debug_mode {
+            if let Some(socket) = socket_path {
+                match libmultipath::send_multipath_command_to_socket(socket, "show maps json") {
+                    Ok(response_str) => {
+                        if let Ok(output) = serde_json::from_str::<MultipathOutput>(&response_str) {
+                            if let Some(maps) = output.maps {
+                                for map in maps {
+                                    maps_by_name_or_uuid.insert(map.name.clone(), map.clone());
+                                    maps_by_name_or_uuid.insert(map.uuid.clone(), map);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Debug log mode failed to query multipathd status: {e}");
+                    }
+                }
+            }
+        }
+
         // 3. Map running VM disks to their parent multipath devices
         let mut active_mpaths = HashSet::new();
         for vm in storage_info.vms {
             if vm.status == "running" {
-                for disk in vm.disks {
+                for disk in &vm.disks {
                     let dm_name = storage_to_dm_name(&disk.storage);
                     let mut matched_mpaths = None;
                     if let Some(mpaths) = mpath_map.get(&dm_name) {
@@ -156,6 +179,26 @@ pub async fn discover_in_use_mpaths(
                     }
 
                     if let Some(mpaths) = matched_mpaths {
+                        if debug_mode {
+                            for mpath in mpaths {
+                                let state = if let Some(map) = maps_by_name_or_uuid.get(mpath) {
+                                    if is_map_dead(map) {
+                                        "failed"
+                                    } else {
+                                        "active"
+                                    }
+                                } else {
+                                    "unknown"
+                                };
+                                let vm_name = &vm.name;
+                                let vmid = vm.vmid;
+                                let storage = &disk.storage;
+                                info!(
+                                    "Discovered VM: {vm_name} (ID: {vmid}), storage: {storage}, multipath device: {mpath}, state: {state}"
+                                );
+                            }
+                        }
+
                         if mpaths.len() > 1 {
                             let mut sorted_mpaths: Vec<String> = mpaths.iter().cloned().collect();
                             sorted_mpaths.sort();
@@ -794,11 +837,27 @@ mod tests {
         env::set_var("PVE_SAN_TEST_DATA_DIR", &test_data);
 
         // Call discovery logic
-        let result = discover_in_use_mpaths("pve001", pvesh_mock.to_str().unwrap()).await;
+        let result = discover_in_use_mpaths(
+            "pve001",
+            pvesh_mock.to_str().unwrap(),
+            None,
+            /*debug_mode*/ false,
+        )
+        .await;
 
         let err = result.as_ref().err();
         assert!(result.is_ok(), "discover_in_use_mpaths failed: {err:?}");
         let active_mpaths = result.unwrap();
+
+        // Call discovery logic in debug mode (handles fallback warning elegantly when socket is missing)
+        let result_debug = discover_in_use_mpaths(
+            "pve001",
+            pvesh_mock.to_str().unwrap(),
+            Some("@/tmp/nonexistent-socket"),
+            /*debug_mode*/ true,
+        )
+        .await;
+        assert!(result_debug.is_ok());
 
         // Verify discovered multipath devices match expected ones based on running VMs in pve001
         assert!(active_mpaths.contains("mpatha"), "mpatha should be active");

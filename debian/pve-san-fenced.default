@@ -17,3 +17,6 @@
 
 # Set to true to run in test/dry-run mode (does not trigger SysRq kernel panic)
 # PVE_SAN_TEST_MODE=false
+
+# Set to true to enable verbose debug logging of discovered VMs, storages, and multipaths on each discovery run
+# PVE_SAN_DEBUG=false

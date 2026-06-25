@@ -79,6 +79,10 @@ struct Cli {
         default_value = "s,b"
     )]
     sysrq_char: String,
+
+    /// Enable debug log mode to log discovered VMs, storages, and multipath devices with their state on each discovery run
+    #[arg(long, env = "PVE_SAN_DEBUG")]
+    debug: bool,
 }
 
 fn extract_defaults_block(config: &str) -> Option<&str> {
@@ -293,6 +297,8 @@ async fn main() {
     let active_luns_clone = Arc::clone(&active_luns);
     let node_clone = cli.node_name.clone();
     let pvesh_cmd_clone = cli.pvesh_command.clone();
+    let socket_clone = cli.socket.clone();
+    let debug_mode = cli.debug;
     let discovery_interval = cli.discovery_interval;
 
     std::thread::spawn(move || {
@@ -303,7 +309,14 @@ async fn main() {
 
         rt.block_on(async {
             loop {
-                match discover_in_use_mpaths(&node_clone, &pvesh_cmd_clone).await {
+                match discover_in_use_mpaths(
+                    &node_clone,
+                    &pvesh_cmd_clone,
+                    Some(&socket_clone),
+                    debug_mode,
+                )
+                .await
+                {
                     Ok(mpaths) => {
                         let mut lock = active_luns_clone.write().await;
                         if *lock != mpaths {
@@ -416,6 +429,7 @@ mod tests {
             pvesh_command: "pvesh".to_string(),
             test_mode: true,
             sysrq_char: "c".to_string(),
+            debug: false,
         };
         assert_eq!(cli, expected);
 
@@ -457,6 +471,7 @@ mod tests {
             pvesh_command: "pvesh".to_string(),
             test_mode: true,
             sysrq_char: "c".to_string(),
+            debug: false,
         };
         assert_eq!(cli_default, expected_default);
 
