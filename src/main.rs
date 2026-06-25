@@ -16,10 +16,33 @@ use log::{debug, error, info, warn};
 use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use pve_san_fenced::{discover_in_use_mpaths, trigger_fencing, Fencer};
+
+/// Holds active multipath devices along with their discovery timestamp
+#[derive(Debug, Clone)]
+struct ActiveLunsWithTimestamp {
+    luns: HashSet<String>,
+    discovered_at: Instant,
+}
+
+impl ActiveLunsWithTimestamp {
+    fn new(luns: HashSet<String>) -> Self {
+        Self {
+            luns,
+            discovered_at: Instant::now(),
+        }
+    }
+
+    /// Check if the data is too stale to use
+    /// Data is considered stale if it's older than 2x the discovery interval
+    fn is_stale(&self, discovery_interval: Duration) -> bool {
+        let max_age = discovery_interval * 2;
+        self.discovered_at.elapsed() > max_age
+    }
+}
 
 fn get_default_node_name() -> String {
     std::fs::read_to_string("/proc/sys/kernel/hostname")
@@ -303,7 +326,9 @@ async fn main() {
         std::process::exit(1);
     }
 
-    let active_luns = Arc::new(RwLock::new(HashSet::new()));
+    let discovery_interval = cli.discovery_interval;
+    let discovery_interval_duration = Duration::from_secs(discovery_interval);
+    let active_luns = Arc::new(RwLock::new(ActiveLunsWithTimestamp::new(HashSet::new())));
 
     // Spawn VM and storage discovery task in an independent OS thread
     let active_luns_clone = Arc::clone(&active_luns);
@@ -311,7 +336,6 @@ async fn main() {
     let pvesh_cmd_clone = cli.pvesh_command.clone();
     let socket_clone = cli.socket.clone();
     let debug_mode = cli.debug;
-    let discovery_interval = cli.discovery_interval;
     let max_retries = cli.discovery_max_retries;
     let backoff_base = cli.discovery_backoff_base;
     let backoff_max = cli.discovery_backoff_max;
@@ -340,10 +364,10 @@ async fn main() {
                             Ok(mpaths) => {
                                 consecutive_failures = 0;
                                 let mut lock = active_luns_clone.write().await;
-                                if *lock != mpaths {
-                                    let prev = &*lock;
+                                if lock.luns != mpaths {
+                                    let prev = &lock.luns;
                                     info!("Active multipath devices changed. Previous: {prev:?}, New: {mpaths:?}");
-                                    *lock = mpaths;
+                                    *lock = ActiveLunsWithTimestamp::new(mpaths);
                                 }
                             }
                             Err(e) => {
@@ -407,10 +431,22 @@ async fn main() {
         let cf = fencer.consecutive_failures();
         let mf = fencer.max_failures();
         debug!("Fencer monitoring state: consecutive_failures={cf}, max_failures={mf}");
-        let active_set = {
+        
+        // Read active LUNs with timestamp
+        let active_data = {
             let lock = active_luns.read().await;
             lock.clone()
         };
+        
+        // Check if the data is too stale to use
+        if active_data.is_stale(discovery_interval_duration) {
+            warn!(
+                "Active LUN data is stale (older than 2x discovery interval). Skipping fencer update to avoid race condition with discovery thread."
+            );
+            continue;
+        }
+        
+        let active_set = active_data.luns;
         debug!("Current active LUNs set: {active_set:?}");
 
         // Query multipathd

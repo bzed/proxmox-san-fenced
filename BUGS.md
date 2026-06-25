@@ -22,15 +22,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 32. Race condition between active LUN set read and multipathd query in main loop
 
-**File**: `src/main.rs:346-378` (main loop)
+**File**: `src/main.rs:428-450` (main loop)
 **Severity**: CRITICAL
-**Status**: OPEN
+**Status**: FIXED
 
 **Description**: The main loop reads and clones the active LUN set at lines 353-356, then queries multipathd at lines 360-368, then calls `fencer.update()` at line 371. Between the clone and the update call, the discovery thread (running on a separate OS thread at line 304) may update `active_luns`. This means the fencer evaluates multipathd state against a potentially stale view of which LUNs are in use. Conversely, if a VM's disk is removed from the active set *after* the clone but multipathd still reports the map as failed, the fencer may not trigger fencing because the LUN no longer appears in the active set — even though multipathd shows it as dead.
 
 **Impact**: Incorrect fencing decisions — either missed reboots on real failures or unnecessary reboots.
 
-**Recommendation**: Combine the active set read and fencer update into a single critical section, or timestamp the active set and reject stale data.
+**Resolution**: Implemented timestamp-based staleness detection. Created an `ActiveLunsWithTimestamp` struct that stores both the active LUNs `HashSet` and the `Instant` when they were discovered. The discovery thread updates this struct with a fresh timestamp on each successful discovery. In the main monitoring loop, before using the active LUNs data, the code checks if the data is stale (older than 2x the discovery interval). If stale, the loop skips the fencer update and logs a warning, preventing race conditions where the fencer would operate on outdated data.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
