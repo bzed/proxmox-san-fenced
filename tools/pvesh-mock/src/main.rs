@@ -28,6 +28,8 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
+use std::thread;
+use std::time::Duration;
 
 /// Default test data directory relative to the binary
 const DEFAULT_TEST_DATA_DIR: &str = "test-data/pvesh";
@@ -53,6 +55,14 @@ struct Cli {
     /// Verbose output
     #[arg(long, short)]
     verbose: bool,
+
+    /// Do not accept any commands, simulating a completely unresponsive pvesh
+    #[arg(long)]
+    unresponsive: bool,
+
+    /// Return an error instead of data, simulating a failing pvesh
+    #[arg(long)]
+    error: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -66,6 +76,25 @@ enum CommandType {
 
 fn main() {
     let cli = Cli::parse();
+
+    // If unresponsive mode, just wait indefinitely without processing any commands
+    if cli.unresponsive {
+        if cli.verbose {
+            eprintln!("pvesh-mock: unresponsive mode enabled - not processing any commands");
+        }
+        loop {
+            thread::sleep(Duration::from_secs(3600));
+        }
+    }
+
+    // If error mode, exit with an error code
+    if cli.error {
+        if cli.verbose {
+            eprintln!("pvesh-mock: error mode enabled - returning error");
+        }
+        eprintln!("pvesh-mock: simulated pvesh error");
+        process::exit(1);
+    }
 
     if cli.verbose {
         eprintln!(

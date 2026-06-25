@@ -737,3 +737,106 @@ fn test_integration_partial_failure_fencing() {
     assert!(full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
     assert!(full_logs.contains("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon."));
 }
+
+#[test]
+// Test that discovery backoff works correctly when discovery encounters errors
+#[test]
+fn test_integration_discovery_backoff() {
+    let mut ctx = TestContext::new("discovery_backoff", "pve001");
+
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    // Start mpath-mockd normally (not needed for this test but for completeness)
+    let mockd_bin = workspace.join("target/debug/mpath-mockd");
+    let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
+
+    let child = Command::new(&mockd_bin)
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--test-data-dir")
+        .arg(test_data_dir)
+        .arg("--file-map")
+        .arg("show maps json=all_active_running.json")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start mpath-mockd");
+
+    ctx.mock_daemon = Some(child);
+    std::thread::sleep(Duration::from_millis(200));
+
+    // Create a fake qemu-server as a FILE (not a directory) to make LocalFiles mode fail
+    // The path is constructed as PVE_SAN_TEST_DATA_DIR.parent() / "pve/local/qemu-server"
+    let fake_qemu_dir = ctx.temp_dir.parent().unwrap().join("pve/local/qemu-server");
+    fs::create_dir_all(fake_qemu_dir.parent().unwrap()).unwrap();
+    fs::write(&fake_qemu_dir, "not a directory").unwrap();
+
+    // Start fencer daemon with short discovery interval and backoff settings
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let nodes_dir = ctx.temp_dir.join("nodes");
+
+    let mut cmd = Command::new(&fencer_bin);
+    cmd.arg("--node-name")
+        .arg("pve001")
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--pvesh-command")
+        .arg("pvesh")
+        .arg("--poll-interval")
+        .arg("1")
+        .arg("--discovery-interval")
+        .arg("1")
+        .arg("--max-failures")
+        .arg("10")
+        .arg("--discovery-max-retries")
+        .arg("2")
+        .arg("--discovery-backoff-base")
+        .arg("1")
+        .arg("--discovery-backoff-max")
+        .arg("3")
+        .env("PVE_SAN_TEST_DATA_DIR", ctx.temp_dir.clone())  // Point to temp dir with fake file
+        .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
+        .env("PVE_SAN_FENCE_DRY_RUN", "1")
+        .env("RUST_LOG", "debug")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let child = cmd.spawn().expect("Failed to start pve-san-fenced");
+    ctx.target_daemon = Some(child);
+
+    // Run for enough time to trigger multiple discovery failures and backoff
+    std::thread::sleep(Duration::from_secs(10));
+
+    let mut fencer = ctx.target_daemon.take().unwrap();
+    // The fencer should still be running - discovery failures should not cause fencing
+    assert!(
+        fencer.try_wait().unwrap().is_none(),
+        "Fencer daemon exited prematurely during discovery backoff test"
+    );
+
+    fencer.kill().ok();
+    let output = fencer.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+
+    println!("=== DISCOVERY BACKOFF TEST LOGS ===\n{full_logs}\n===============================");
+
+    // Verify that discovery errors are logged
+    assert!(
+        full_logs.contains("Error discovering active multipath devices"),
+        "Logs did not contain discovery errors:\n{full_logs}"
+    );
+
+    // Verify that backoff warnings are logged
+    assert!(
+        full_logs.contains("backing off for") && full_logs.contains("consecutive failures"),
+        "Logs did not contain backoff warnings:\n{full_logs}"
+    );
+
+    // Verify that fencing was NOT triggered (discovery errors should not cause fencing)
+    assert!(
+        !full_logs.contains("SAN FENCER: Total persistent storage loss detected"),
+        "Fencing should NOT have been triggered during discovery failures:\n{full_logs}"
+    );
+}
