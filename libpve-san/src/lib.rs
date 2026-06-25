@@ -306,7 +306,9 @@ impl PveSanClient {
                 for dev in devices {
                     if dev.name.starts_with("dm-") {
                         let dev_name = &dev.name;
-                        let sys_path = format!("/sys/block/{dev_name}/dm/name");
+                        let prefix = std::env::var("PVE_SAN_SYS_PATH")
+                            .unwrap_or_else(|_| "/sys".to_string());
+                        let sys_path = format!("{prefix}/block/{dev_name}/dm/name");
                         if let Ok(mapped_name) = std::fs::read_to_string(sys_path) {
                             let mapped_name = mapped_name.trim().to_string();
                             let mpaths =
