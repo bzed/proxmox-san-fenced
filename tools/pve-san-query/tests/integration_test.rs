@@ -258,7 +258,7 @@ fn test_pve_san_query_mode_local_files() {
     vmids.sort_unstable();
 
     let mut expected = vec![
-        104, 105, 114, 116, 117, 122, 126, 130, 131, 132, 133, 140, 141, 144, 145, 147,
+        104, 105, 114, 116, 117, 122, 126, 130, 131, 132, 133, 140, 141, 144, 145, 147, 999,
     ];
     expected.sort_unstable();
 

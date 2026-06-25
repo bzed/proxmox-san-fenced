@@ -1005,7 +1005,7 @@ mod tests {
         let vms = client.list_running_vms().await.unwrap();
 
         let mut expected = vec![
-            104, 105, 114, 116, 117, 122, 126, 130, 131, 132, 133, 140, 141, 144, 145, 147,
+            104, 105, 114, 116, 117, 122, 126, 130, 131, 132, 133, 140, 141, 144, 145, 147, 999,
         ];
         expected.sort_unstable();
 
@@ -1013,5 +1013,32 @@ mod tests {
         vmids.sort_unstable();
 
         assert_eq!(vmids, expected);
+    }
+
+    #[test]
+    fn test_parse_vm_999_all_disk_types() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let test_data_path = manifest_dir
+            .parent()
+            .unwrap()
+            .join("test-data/pve/local/qemu-server/999.conf");
+        let content = std::fs::read_to_string(test_data_path).unwrap();
+
+        let config = PveSanConfig::with_node("test").unwrap();
+        let client = PveSanClient::new(config);
+
+        let config_map = client.parse_vm_config(&content).unwrap();
+        let disks = client.extract_disks(&config_map).unwrap();
+
+        // 999.conf has efidisk0, efidisk5, sata1, ide2, scsi3, virtio4 (6 disks in total)
+        assert_eq!(disks.len(), 6);
+
+        let device_ids: Vec<String> = disks.iter().map(|d| d.device_id.clone()).collect();
+        assert!(device_ids.contains(&"efidisk0".to_string()));
+        assert!(device_ids.contains(&"sata1".to_string()));
+        assert!(device_ids.contains(&"ide2".to_string()));
+        assert!(device_ids.contains(&"scsi3".to_string()));
+        assert!(device_ids.contains(&"virtio4".to_string()));
+        assert!(device_ids.contains(&"efidisk5".to_string()));
     }
 }
