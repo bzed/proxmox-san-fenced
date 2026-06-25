@@ -597,3 +597,62 @@ fn test_integration_hanging_multipathd() {
         "Fencing should NOT have been triggered during daemon query timeouts:\n{full_logs}"
     );
 }
+
+#[test]
+fn test_integration_partial_failure_fencing() {
+    let mut ctx = TestContext::new("partial_failure_fencing", "pve001");
+
+    // Start mock daemon with maps where mpathb is failed but mpatha is active
+    start_mockd(&mut ctx, "show maps json=mpatha_active_mpathb_failed.json");
+
+    // Start fencer daemon
+    start_fencer(&mut ctx, "pve001", &[]);
+
+    // The daemon should fence after 3 failures (max-failures 3, poll-interval 1s)
+    let start = std::time::Instant::now();
+    let mut exit_status = None;
+    let mut fencer = ctx
+        .target_daemon
+        .take()
+        .expect("Fencer process not tracked");
+
+    while start.elapsed() < Duration::from_secs(10) {
+        if let Some(status) = fencer.try_wait().unwrap() {
+            exit_status = Some(status);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    if exit_status.is_none() {
+        fencer.kill().ok();
+        let output = fencer.wait_with_output().unwrap();
+        panic!(
+            "Fencer failed to exit within 10 seconds under partial multipath failure!\nFencer Logs:\nSTDOUT:\n{}\nSTDERR:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let status = exit_status.unwrap();
+    assert!(
+        status.success(),
+        "Fencer daemon exited with failure code instead of clean dry-run exit: {:?}",
+        status
+    );
+
+    let output = fencer.wait_with_output().unwrap();
+    let full_logs = format!(
+        "STDOUT:\n{}\nSTDERR:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    println!("=== LOGS ===\n{full_logs}\n=============");
+
+    // Verify correct progression of failures and final dry-run exit
+    assert!(full_logs.contains("Consecutive storage failure: 1/3"));
+    assert!(full_logs.contains("Consecutive storage failure: 2/3"));
+    assert!(full_logs.contains("Consecutive storage failure: 3/3"));
+    assert!(full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
+    assert!(full_logs.contains("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon."));
+}
