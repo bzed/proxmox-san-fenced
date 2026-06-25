@@ -203,6 +203,16 @@ impl PveSanConfig {
     /// # Returns
     ///
     /// Returns the configuration if valid, or an error if the node name is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use libpve_san::PveSanConfig;
+    ///
+    /// let config = PveSanConfig::new("pve01", None).unwrap();
+    /// assert_eq!(config.node(), "pve01");
+    /// assert_eq!(config.pvesh_command(), "pvesh");
+    /// ```
     pub fn new(node: impl Into<String>, pvesh_command: Option<&str>) -> PveSanResult<Self> {
         let node = node.into();
         if node.is_empty() {
@@ -228,6 +238,16 @@ impl PveSanConfig {
     }
 
     /// Creates a new PveSanConfig with the given node name and default pvesh command.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use libpve_san::{PveSanConfig, PveMode};
+    ///
+    /// let config = PveSanConfig::with_node("pve01").unwrap();
+    /// assert_eq!(config.node(), "pve01");
+    /// assert_eq!(config.mode(), PveMode::LocalFiles);
+    /// ```
     pub fn with_node(node: impl Into<String>) -> PveSanResult<Self> {
         Self::new(node, /*pvesh_command*/ None)
     }
@@ -243,6 +263,17 @@ impl PveSanConfig {
     }
 
     /// Sets the query mode.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use libpve_san::{PveSanConfig, PveMode};
+    ///
+    /// let config = PveSanConfig::with_node("pve01")
+    ///     .unwrap()
+    ///     .with_mode(PveMode::Pvesh);
+    /// assert_eq!(config.mode(), PveMode::Pvesh);
+    /// ```
     pub fn with_mode(mut self, mode: PveMode) -> Self {
         self.mode = mode;
         self
