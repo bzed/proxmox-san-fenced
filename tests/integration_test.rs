@@ -599,6 +599,87 @@ fn test_integration_hanging_multipathd() {
 }
 
 #[test]
+fn test_integration_unresponsive_multipathd_connection_timeout() {
+    let mut ctx = TestContext::new("unresponsive_multipathd", "pve001");
+
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mockd_bin = workspace.join("target/debug/mpath-mockd");
+
+    let child = Command::new(mockd_bin)
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--unresponsive")
+        .arg("--verbose")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start mpath-mockd in unresponsive mode");
+
+    ctx.mock_daemon = Some(child);
+
+    std::thread::sleep(Duration::from_millis(200));
+
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let pvesh_mock_bin = workspace.join("target/debug/pvesh-mock");
+    let pvesh_test_data = workspace.join("test-data/pvesh");
+    let nodes_dir = ctx.temp_dir.join("nodes");
+
+    let mut cmd = Command::new(fencer_bin);
+    cmd.arg("--node-name")
+        .arg("pve001")
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--pvesh-command")
+        .arg(pvesh_mock_bin)
+        .arg("--poll-interval")
+        .arg("1")
+        .arg("--discovery-interval")
+        .arg("10")
+        .arg("--max-failures")
+        .arg("3")
+        .env("PVE_SAN_TEST_DATA_DIR", pvesh_test_data)
+        .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
+        .env("PVE_SAN_FENCE_DRY_RUN", "1")
+        .env("RUST_LOG", "debug")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let child = cmd.spawn().expect("Failed to start pve-san-fenced");
+    ctx.target_daemon = Some(child);
+
+    // Wait for at least one poll cycle to occur (1 second poll interval)
+    // The connection should timeout after DEFAULT_CONNECT_TIMEOUT_MS (2000ms)
+    // Also need time for discovery to run first
+    std::thread::sleep(Duration::from_secs(5));
+
+    let mut fencer = ctx.target_daemon.take().unwrap();
+    // The fencer should still be running because connection timeout is handled gracefully
+    assert!(
+        fencer.try_wait().unwrap().is_none(),
+        "Fencer daemon exited prematurely during unresponsive multipathd test"
+    );
+
+    fencer.kill().ok();
+    let output = fencer.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+
+    // Verify that connection timeout errors are logged
+    assert!(
+        full_logs.contains("Connection") && full_logs.contains("timed out") ||
+        full_logs.contains("Failed to query multipathd"),
+        "Logs did not contain connection timeout error:\n{full_logs}"
+    );
+    
+    // Verify that fencing was NOT triggered (connection errors should not cause fencing)
+    assert!(
+        !full_logs.contains("SAN FENCER: Total persistent storage loss detected"),
+        "Fencing should NOT have been triggered during connection timeouts:\n{full_logs}"
+    );
+}
+
+#[test]
 fn test_integration_partial_failure_fencing() {
     let mut ctx = TestContext::new("partial_failure_fencing", "pve001");
 

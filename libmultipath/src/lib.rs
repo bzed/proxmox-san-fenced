@@ -22,6 +22,8 @@ use std::ffi::CString;
 use std::io::{self, Read, Write};
 use std::os::linux::net::SocketAddrExt;
 use std::os::unix::net::{SocketAddr, UnixStream};
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
 /// Default socket path for multipathd (abstract namespace)
@@ -34,6 +36,9 @@ pub const MAX_REPLY_LEN: usize = 32 * 1024 * 1024;
 
 /// Default reply timeout in milliseconds
 pub const DEFAULT_REPLY_TIMEOUT_MS: u64 = 4000;
+
+/// Default connection timeout in milliseconds
+pub const DEFAULT_CONNECT_TIMEOUT_MS: u64 = 2000;
 
 /// Represents a connection to the multipathd daemon.
 pub struct MultipathConnection {
@@ -155,11 +160,30 @@ impl MultipathConnection {
     }
 
     fn connect_to_socket(socket_path: &str) -> io::Result<UnixStream> {
-        if let Some(abstract_name) = socket_path.strip_prefix('@') {
-            let addr = SocketAddr::from_abstract_name(abstract_name.as_bytes())?;
-            UnixStream::connect_addr(&addr)
-        } else {
-            UnixStream::connect(socket_path)
+        let socket_path_clone = socket_path.to_string();
+        let timeout = Duration::from_millis(DEFAULT_CONNECT_TIMEOUT_MS);
+        
+        let (sender, receiver) = mpsc::channel();
+        
+        thread::spawn(move || {
+            let result: io::Result<UnixStream> = if let Some(abstract_name) = socket_path_clone.strip_prefix('@') {
+                match SocketAddr::from_abstract_name(abstract_name.as_bytes()) {
+                    Ok(addr) => UnixStream::connect_addr(&addr),
+                    Err(_) => Err(io::Error::new(io::ErrorKind::Other, "Invalid socket address")),
+                }
+            } else {
+                UnixStream::connect(&socket_path_clone)
+            };
+            sender.send(result).ok();
+        });
+        
+        match receiver.recv_timeout(timeout) {
+            Ok(Ok(stream)) => Ok(stream),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("Connection to {} timed out after {}ms", socket_path, DEFAULT_CONNECT_TIMEOUT_MS),
+            )),
         }
     }
 

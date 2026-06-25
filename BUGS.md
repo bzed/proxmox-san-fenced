@@ -64,15 +64,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 35. `send_multipath_command_to_socket` has no connection timeout
 
-**File**: `libmultipath/src/lib.rs:288-291`
+**File**: `libmultipath/src/lib.rs:157-187`
 **Severity**: HIGH
-**Status**: OPEN
+**Status**: FIXED
 
 **Description**: `send_multipath_command_to_socket` creates a new `MultipathConnection` and sends a command with a reply timeout, but there is no timeout on the initial `UnixStream::connect()` call. If multipathd is completely unresponsive (not just slow to reply, but the connection itself hangs), the function can block indefinitely. This would freeze the entire monitoring loop since it runs on the main thread.
 
 **Impact**: Complete stall of the fencing daemon if multipathd becomes unreachable.
 
-**Recommendation**: Set a write timeout on the stream before connecting, or use a non-blocking connect with a select/poll loop.
+**Resolution**: Added a connection timeout of 2000ms (DEFAULT_CONNECT_TIMEOUT_MS) to the `connect_to_socket` function. The connection is now performed in a separate thread with a timeout, so if the connection cannot be established within 2 seconds, it returns a timeout error instead of blocking indefinitely.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 

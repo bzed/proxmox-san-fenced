@@ -66,6 +66,10 @@ struct Cli {
     /// Hang/idle after sending a partial response to simulate a slow/hanging multipathd
     #[arg(long)]
     hang: bool,
+
+    /// Do not accept any connections, simulating a completely unresponsive multipathd
+    #[arg(long)]
+    unresponsive: bool,
 }
 
 /// Tracks the current index for cycling through files for each command
@@ -269,6 +273,16 @@ fn main() {
             eprintln!("Listening on filesystem socket: {socket}");
         }
         eprintln!("PID: {}", std::process::id());
+    }
+
+    // If unresponsive mode, just wait indefinitely without accepting connections
+    if cli.unresponsive {
+        if cli.verbose {
+            eprintln!("Unresponsive mode enabled - not accepting any connections");
+        }
+        loop {
+            thread::sleep(Duration::from_secs(3600));
+        }
     }
 
     // Accept connections in a loop
