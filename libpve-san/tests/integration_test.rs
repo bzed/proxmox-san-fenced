@@ -25,6 +25,35 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct EnvGuard {
+    saved_vars: Vec<(String, Option<String>)>,
+}
+
+impl EnvGuard {
+    fn new(keys: &[&str]) -> Self {
+        let mut saved_vars = Vec::new();
+        for key in keys {
+            let val = std::env::var(key).ok();
+            saved_vars.push((key.to_string(), val));
+        }
+        Self { saved_vars }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, val) in &self.saved_vars {
+            if let Some(v) = val {
+                std::env::set_var(key, v);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+    }
+}
+
 /// Helper to get the workspace root directory
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR is the directory containing libpve-san's Cargo.toml
@@ -48,6 +77,7 @@ fn pvesh_mock_path() -> PathBuf {
 
 /// Run pvesh-mock with given arguments and return the output
 fn run_pvesh_mock(args: &[&str]) -> Output {
+    let _lock = ENV_LOCK.lock().unwrap();
     let pvesh_mock_path = pvesh_mock_path();
     let test_data = test_data_dir();
     let cwd = workspace_root();
@@ -62,37 +92,11 @@ fn run_pvesh_mock(args: &[&str]) -> Output {
 
 /// Run the actual library code with the mock pvesh command
 fn run_library_test(node: &str) -> Result<SanStorageInfo, PveSanError> {
+    let _lock = ENV_LOCK.lock().unwrap();
     let pvesh_mock_path = pvesh_mock_path();
     let test_data = test_data_dir();
 
-    struct EnvGuard {
-        saved_vars: Vec<(String, Option<String>)>,
-    }
-
-    impl EnvGuard {
-        fn new(keys: &[&str]) -> Self {
-            let mut saved_vars = Vec::new();
-            for key in keys {
-                let val = std::env::var(key).ok();
-                saved_vars.push((key.to_string(), val));
-            }
-            Self { saved_vars }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            for (key, val) in &self.saved_vars {
-                if let Some(v) = val {
-                    std::env::set_var(key, v);
-                } else {
-                    std::env::remove_var(key);
-                }
-            }
-        }
-    }
-
-    let _guard = EnvGuard::new(&["PVE_SAN_TEST_DATA_DIR"]);
+    let _guard = EnvGuard::new(&["PVE_SAN_TEST_DATA_DIR", "PVE_SAN_SYS_PATH"]);
     env::set_var("PVE_SAN_TEST_DATA_DIR", &test_data);
 
     let result = get_san_storage_info_sync_with_pvesh(node, pvesh_mock_path.to_str().unwrap());
@@ -149,7 +153,7 @@ fn test_pvesh_mock_get_vm_config() {
     assert_eq!(data["name"], "test-vm-001");
     assert_eq!(
         data["virtio0"],
-        "storage-pool-001:vm-104-disk-0.qcow2,cache=none,size=50G"
+        "storage-pool-002:vm-104-disk-0.qcow2,cache=none,size=50G"
     );
 
     // Check for disk
@@ -210,7 +214,7 @@ fn test_library_with_mock_parse_vm_104() {
             assert!(virtio0.is_some(), "Expected to find virtio0 disk");
 
             let disk = virtio0.unwrap();
-            assert_eq!(disk.storage, "storage-pool-001:vm-104-disk-0.qcow2");
+            assert_eq!(disk.storage, "storage-pool-002:vm-104-disk-0.qcow2");
             assert_eq!(disk.size_bytes, Some(50 * 1024 * 1024 * 1024)); // 50G
             assert_eq!(disk.device_mapper_name, Some("mpatha / mpathb".to_string()));
             assert_eq!(
@@ -345,6 +349,7 @@ fn test_library_with_mock_parse_vm_147() {
 
 #[test]
 fn test_pvesh_not_found_error() {
+    let _lock = ENV_LOCK.lock().unwrap();
     // Test with a non-existent pvesh command
     let result = get_san_storage_info_sync_with_pvesh("pve001", "nonexistent-pvesh-command");
 
@@ -413,36 +418,10 @@ fn test_vmid_extraction_from_pve001_qemu_json() {
 
 #[test]
 fn test_library_local_files_mode() {
+    let _lock = ENV_LOCK.lock().unwrap();
     let test_data = test_data_dir();
 
-    struct EnvGuard {
-        saved_vars: Vec<(String, Option<String>)>,
-    }
-
-    impl EnvGuard {
-        fn new(keys: &[&str]) -> Self {
-            let mut saved_vars = Vec::new();
-            for key in keys {
-                let val = std::env::var(key).ok();
-                saved_vars.push((key.to_string(), val));
-            }
-            Self { saved_vars }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            for (key, val) in &self.saved_vars {
-                if let Some(v) = val {
-                    std::env::set_var(key, v);
-                } else {
-                    std::env::remove_var(key);
-                }
-            }
-        }
-    }
-
-    let _guard = EnvGuard::new(&["PVE_SAN_TEST_DATA_DIR"]);
+    let _guard = EnvGuard::new(&["PVE_SAN_TEST_DATA_DIR", "PVE_SAN_SYS_PATH"]);
     std::env::set_var("PVE_SAN_TEST_DATA_DIR", &test_data);
 
     let result = libpve_san::get_san_storage_info_sync("pve001");
@@ -467,5 +446,38 @@ fn test_library_local_files_mode() {
             assert_eq!(vm_130.status, "running");
         }
         Err(e) => panic!("Failed to get SAN storage info in LocalFiles mode: {e}"),
+    }
+}
+
+#[test]
+fn test_library_sys_traversal_mode() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let test_data = test_data_dir();
+    let mock_sys = workspace_root().join("test-data/sys");
+
+    let _guard = EnvGuard::new(&["PVE_SAN_TEST_DATA_DIR", "PVE_SAN_SYS_PATH"]);
+    std::env::set_var("PVE_SAN_TEST_DATA_DIR", &test_data);
+    std::env::set_var("PVE_SAN_SYS_PATH", &mock_sys);
+
+    let result = libpve_san::get_san_storage_info_sync("pve001");
+
+    match result {
+        Ok(info) => {
+            assert_eq!(info.node, "pve001");
+
+            // Find VM 104
+            let vm_104 = info.vms.iter().find(|vm| vm.vmid == 104).unwrap();
+            let disk = &vm_104.disks[0];
+            assert_eq!(disk.storage, "storage-pool-002:vm-104-disk-0.qcow2");
+            assert_eq!(disk.device_mapper_name, Some("mpatha".to_string()));
+            assert_eq!(disk.device_path, Some("/dev/mapper/mpatha".to_string()));
+
+            // Check root-level multipath_devices section for 104
+            assert_eq!(
+                info.multipath_devices.as_ref().and_then(|m| m.get("104")),
+                Some(&vec!["mpatha".to_string()])
+            );
+        }
+        Err(e) => panic!("Failed to get SAN storage info in SysTraversal mode: {e}"),
     }
 }

@@ -293,7 +293,9 @@ impl PveSanClient {
 
         // Retrieve lsblk tree to build a mapping from child devices to parent mpaths
         let mut mpath_map: HashMap<String, HashSet<String>> = HashMap::new();
-        if std::env::var("PVE_SAN_TEST_DATA_DIR").is_ok() {
+        if std::env::var("PVE_SAN_TEST_DATA_DIR").is_ok()
+            && std::env::var("PVE_SAN_SYS_PATH").is_err()
+        {
             if let Some(json_content) = self.get_lsblk_json().await {
                 if let Ok(lsblk_output) = serde_json::from_str::<LsblkOutput>(&json_content) {
                     if let Some(devices) = lsblk_output.blockdevices {
@@ -302,22 +304,35 @@ impl PveSanClient {
                 }
             }
         } else {
-            if let Ok(devices) = BlockDevice::list() {
-                for dev in devices {
-                    if dev.name.starts_with("dm-") {
-                        let dev_name = &dev.name;
-                        let prefix = std::env::var("PVE_SAN_SYS_PATH")
-                            .unwrap_or_else(|_| "/sys".to_string());
-                        let sys_path = format!("{prefix}/block/{dev_name}/dm/name");
-                        if let Ok(mapped_name) = std::fs::read_to_string(sys_path) {
-                            let mapped_name = mapped_name.trim().to_string();
-                            let mpaths =
-                                sysfs::find_multipaths_for_dm(dev_name, &mut HashSet::new());
-                            if !mpaths.is_empty() {
-                                mpath_map.insert(mapped_name, mpaths.clone());
-                                mpath_map.insert(dev_name.clone(), mpaths);
-                            }
+            let prefix = std::env::var("PVE_SAN_SYS_PATH").unwrap_or_else(|_| "/sys".to_string());
+            let dev_names: Vec<String> = if std::env::var("PVE_SAN_SYS_PATH").is_ok() {
+                let mut names = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(format!("{prefix}/block")) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if name.starts_with("dm-") {
+                            names.push(name);
                         }
+                    }
+                }
+                names
+            } else {
+                BlockDevice::list()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|d| d.name.starts_with("dm-"))
+                    .map(|d| d.name)
+                    .collect()
+            };
+
+            for dev_name in dev_names {
+                let sys_path = format!("{prefix}/block/{dev_name}/dm/name");
+                if let Ok(mapped_name) = std::fs::read_to_string(sys_path) {
+                    let mapped_name = mapped_name.trim().to_string();
+                    let mpaths = sysfs::find_multipaths_for_dm(&dev_name, &mut HashSet::new());
+                    if !mpaths.is_empty() {
+                        mpath_map.insert(mapped_name, mpaths.clone());
+                        mpath_map.insert(dev_name.clone(), mpaths);
                     }
                 }
             }
@@ -339,13 +354,21 @@ impl PveSanClient {
 
                     for disk in &mut disks {
                         let dm_name = self.storage_to_dm_name(&disk.storage);
+                        let dm_name_legacy = self.storage_to_dm_name_legacy(&disk.storage);
                         let mut matched_mpaths = None;
 
                         if let Some(mpaths) = mpath_map.get(&dm_name) {
                             matched_mpaths = Some(mpaths);
+                        } else if let Some(mpaths) = mpath_map.get(&dm_name_legacy) {
+                            matched_mpaths = Some(mpaths);
                         } else if let Some(mpaths) = mpath_map.get(&disk.storage) {
                             matched_mpaths = Some(mpaths);
                         } else if let Some(mpaths) = dm_name
+                            .strip_prefix("/dev/mapper/")
+                            .and_then(|name| mpath_map.get(name))
+                        {
+                            matched_mpaths = Some(mpaths);
+                        } else if let Some(mpaths) = dm_name_legacy
                             .strip_prefix("/dev/mapper/")
                             .and_then(|name| mpath_map.get(name))
                         {
@@ -442,6 +465,14 @@ impl PveSanClient {
     }
 
     fn storage_to_dm_name(&self, storage: &str) -> String {
+        if let Some((vg, lv)) = storage.split_once(':') {
+            format!("{}-{}", vg.replace("-", "--"), lv.replace("-", "--"))
+        } else {
+            storage.to_string()
+        }
+    }
+
+    fn storage_to_dm_name_legacy(&self, storage: &str) -> String {
         if let Some((vg, lv)) = storage.split_once(':') {
             format!("{vg}-{}", lv.replace("-", "--"))
         } else {
