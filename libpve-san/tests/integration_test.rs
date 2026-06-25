@@ -477,6 +477,39 @@ fn test_library_sys_traversal_mode() {
                 info.multipath_devices.as_ref().and_then(|m| m.get("104")),
                 Some(&vec!["mpatha".to_string()])
             );
+
+            // Verify expected multipath mappings for all other active VMs
+            let expected_mappings = vec![
+                ("104", vec!["mpatha"]),
+                ("114", vec!["mpathb"]),
+                ("116", vec!["mpatha", "mpathb"]),
+                ("126", vec!["mpatha"]),
+                ("130", vec!["mpatha", "mpathb"]),
+                ("131", vec!["mpatha", "mpathb"]),
+                ("132", vec!["mpatha", "mpathb"]),
+                ("133", vec!["mpatha", "mpathb"]),
+                ("140", vec!["mpatha", "mpathb"]),
+                ("144", vec!["mpathb"]),
+                ("145", vec!["mpathb"]),
+                ("147", vec!["mpathb"]),
+            ];
+
+            let mpaths = info.multipath_devices.as_ref().unwrap();
+            for (vmid, expected) in expected_mappings {
+                let actual = mpaths.get(vmid).unwrap_or_else(|| {
+                    panic!("VM {vmid} should have mapped multipath devices");
+                });
+                let expected_strs: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
+                assert_eq!(actual, &expected_strs, "VM {vmid} mapping mismatch");
+            }
+
+            // Ensure other VMs (105, 117, 122, 141, 999) do not have any multipath devices mapped
+            for unmapped in &["105", "117", "122", "141", "999"] {
+                assert!(
+                    mpaths.get(*unmapped).is_none(),
+                    "VM {unmapped} should not have any mapped multipath devices"
+                );
+            }
         }
         Err(e) => panic!("Failed to get SAN storage info in SysTraversal mode: {e}"),
     }
