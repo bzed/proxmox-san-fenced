@@ -1,3 +1,11 @@
+pve-san-fenced (0.1.3) unstable; urgency=medium
+
+  * [8ef1796] Add Puppet class example and configure Debian packaging to install it as documentation
+  * [8cf3f0a] Refactor Puppet example class to store heredoc configuration in a variable with proper indentation
+  * [a5276f5] Add slow/hanging replies support to mpath-mockd and verify fencer daemon handles it sanely
+
+ -- Bernd Zeimetz <bzed@debian.org>  Thu, 25 Jun 2026 14:16:34 +0200
+
 pve-san-fenced (0.1.2) unstable; urgency=medium
 
   * [cfafcb6] Add debug log mode to log discovered VMs, storages, and multipath devices and their states
