@@ -248,11 +248,13 @@ Each entry includes the file, line, description, severity, and resolution status
 
 **File**: `debian/pve-san-fenced.service:1-15`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: FIXED
 
 **Description**: The systemd service file does not specify `TimeoutStartSec`. The default systemd timeout is 90 seconds, which may be too short if the daemon takes a long time during startup (e.g., waiting for multipathd to be ready).
 
 **Impact**: Service could be killed during slow startup.
+
+**Resolution**: Added `TimeoutStartSec=120` to the `[Service]` section.
 
 **Recommendation**: Add `TimeoutStartSec=120` or similar.
 
@@ -276,9 +278,11 @@ Each entry includes the file, line, description, severity, and resolution status
 
 **File**: `debian/pve-san-fenced.service`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: FIXED
 
 **Description**: The service file does not set `NoNewPrivileges=yes` in the `[Service]` section. This means the process can gain new privileges via setuid binaries or capabilities.
+
+**Resolution**: Added `NoNewPrivileges=yes` to the `[Service]` section.
 
 **Recommendation**: Add `NoNewPrivileges=yes` for defense in depth.
 
@@ -288,9 +292,11 @@ Each entry includes the file, line, description, severity, and resolution status
 
 **File**: `debian/pve-san-fenced.service`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: FIXED
 
 **Description**: The service does not use systemd's filesystem protection directives. The daemon writes to `/proc/sysrq-trigger` which is expected, but it should not have write access to the rest of the filesystem.
+
+**Resolution**: Added `ProtectSystem=strict`, `ProtectHome=yes`, and `ReadWritePaths=/proc/sysrq-trigger` to the `[Service]` section.
 
 **Recommendation**: Add `ProtectSystem=strict`, `ProtectHome=yes`, and `ReadWritePaths=/proc` to restrict filesystem access.
 

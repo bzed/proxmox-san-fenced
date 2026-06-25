@@ -10,6 +10,11 @@ EnvironmentFile=-/etc/default/pve-san-fenced
 ExecStart=/usr/sbin/pve-san-fenced
 Restart=always
 RestartSec=5
+TimeoutStartSec=120
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/proc/sysrq-trigger
 
 [Install]
 WantedBy=multi-user.target
