@@ -1,3 +1,24 @@
+pve-san-fenced (0.1.4) unstable; urgency=medium
+
+  * [fe0c23c] AGENTS.md: describe commit format
+  * [5172fcf] Fix VMID extraction in list_running_vms and add unit/integration tests
+  * [0475eae] Add LocalFiles and Pvesh query modes, making LocalFiles default
+  * [398f3aa] Add --mode config option to pve-san-query defaulting to local-files
+  * [6e470bd] Make node parameter optional for local-files mode in pve-san-query
+  * [b4d515a] Add unit test for parsing all Proxmox disk types from 999.conf
+  * [9904bf9] Add multipath mapping information to pve-san-query output
+  * [07ca05f] Use lsblk crate and sysfs block traversal instead of running lsblk command
+  * [7265ad0] Add sysfs mock data collection script and support PVE_SAN_SYS_PATH
+  * [3eae8b2] Add mock sysfs test data with anonymized device names
+  * [49c86da] Fix storage pool name for existing data
+  * [a72a1f7] Fix multipath device mapping under sysfs mock traversal
+  * [9074c74] Add integration test assertions for all VM multipath mappings
+  * [c669ec9] Add integration test for fencing under partial multipath failure
+  * [e201dc5] Add compiler-verified doc-tests for PveSanConfig builder methods
+  * [03ff803] Expand doc-tests and unit-tests in libmultipath and pve-san-query
+
+ -- Bernd Zeimetz <bzed@debian.org>  Thu, 25 Jun 2026 16:52:07 +0200
+
 pve-san-fenced (0.1.3) unstable; urgency=medium
 
   * [8ef1796] Add Puppet class example and configure Debian packaging to install it as documentation
