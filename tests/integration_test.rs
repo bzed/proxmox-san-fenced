@@ -738,8 +738,7 @@ fn test_integration_partial_failure_fencing() {
     assert!(full_logs.contains("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon."));
 }
 
-#[test]
-// Test that discovery backoff works correctly when discovery encounters errors
+    // Test that discovery backoff works correctly when discovery encounters errors
 #[test]
 fn test_integration_discovery_backoff() {
     let mut ctx = TestContext::new("discovery_backoff", "pve001");
