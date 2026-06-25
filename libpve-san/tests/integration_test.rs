@@ -399,3 +399,62 @@ fn test_vmid_extraction_from_pve001_qemu_json() {
 
     assert_eq!(vmids, expected_vmids);
 }
+
+#[test]
+fn test_library_local_files_mode() {
+    let test_data = test_data_dir();
+
+    struct EnvGuard {
+        saved_vars: Vec<(String, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn new(keys: &[&str]) -> Self {
+            let mut saved_vars = Vec::new();
+            for key in keys {
+                let val = std::env::var(key).ok();
+                saved_vars.push((key.to_string(), val));
+            }
+            Self { saved_vars }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, val) in &self.saved_vars {
+                if let Some(v) = val {
+                    std::env::set_var(key, v);
+                } else {
+                    std::env::remove_var(key);
+                }
+            }
+        }
+    }
+
+    let _guard = EnvGuard::new(&["PVE_SAN_TEST_DATA_DIR"]);
+    std::env::set_var("PVE_SAN_TEST_DATA_DIR", &test_data);
+
+    let result = libpve_san::get_san_storage_info_sync("pve001");
+
+    match result {
+        Ok(info) => {
+            assert_eq!(info.node, "pve001");
+
+            // Local files mode should find all 16 VMs (including 130)
+            let mut vmids: Vec<u64> = info.vms.iter().map(|vm| vm.vmid).collect();
+            vmids.sort_unstable();
+
+            let mut expected = vec![
+                104, 105, 114, 116, 117, 122, 126, 130, 131, 132, 133, 140, 141, 144, 145, 147,
+            ];
+            expected.sort_unstable();
+
+            assert_eq!(vmids, expected);
+
+            // Verify VM 130 is present and has status "running" (since local mode treats all as running)
+            let vm_130 = info.vms.iter().find(|vm| vm.vmid == 130).unwrap();
+            assert_eq!(vm_130.status, "running");
+        }
+        Err(e) => panic!("Failed to get SAN storage info in LocalFiles mode: {e}"),
+    }
+}

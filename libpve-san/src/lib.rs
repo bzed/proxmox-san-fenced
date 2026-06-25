@@ -163,6 +163,16 @@ pub struct BlockDeviceInfo {
     pub mount_point: Option<String>,
 }
 
+/// Query mode for the PVE SAN client
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PveMode {
+    /// Query using pvesh command
+    Pvesh,
+    /// Query local configuration files only (default)
+    #[default]
+    LocalFiles,
+}
+
 /// Configuration for the PVE SAN client
 #[derive(Debug, Clone)]
 pub struct PveSanConfig {
@@ -171,6 +181,9 @@ pub struct PveSanConfig {
 
     /// The pvesh command to use (default: "pvesh")
     pvesh_command: String,
+
+    /// The query mode (default: PveMode::LocalFiles)
+    mode: PveMode,
 }
 
 impl PveSanConfig {
@@ -204,6 +217,7 @@ impl PveSanConfig {
         Ok(Self {
             node,
             pvesh_command: cmd.to_string(),
+            mode: PveMode::default(),
         })
     }
 
@@ -220,6 +234,17 @@ impl PveSanConfig {
     /// Returns the pvesh command.
     pub fn pvesh_command(&self) -> &str {
         &self.pvesh_command
+    }
+
+    /// Sets the query mode.
+    pub fn with_mode(mut self, mode: PveMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// Returns the query mode.
+    pub fn mode(&self) -> PveMode {
+        self.mode
     }
 }
 
@@ -296,32 +321,72 @@ impl PveSanClient {
 
     #[tracing::instrument(skip(self))]
     async fn list_running_vms(&self) -> PveSanResult<Vec<(u64, String)>> {
-        let node = &self.config.node;
-        let path = format!("/nodes/{node}/qemu");
+        match self.config.mode {
+            PveMode::Pvesh => {
+                let node = &self.config.node;
+                let path = format!("/nodes/{node}/qemu");
 
-        let json_output = self.run_pvesh_ls(&path).await?;
+                let json_output = self.run_pvesh_ls(&path).await?;
 
-        let data: Vec<serde_json::Value> = serde_json::from_str(&json_output)
-            .map_err(|e| PveSanError::JsonParseError(e.to_string()))?;
+                let data: Vec<serde_json::Value> = serde_json::from_str(&json_output)
+                    .map_err(|e| PveSanError::JsonParseError(e.to_string()))?;
 
-        let mut vms = Vec::new();
-        for item in data {
-            let vmid = item["vmid"]
-                .as_u64()
-                .or_else(|| item["vmid"].as_str().and_then(|s| s.parse::<u64>().ok()))
-                .or_else(|| item["subdir"].as_u64())
-                .or_else(|| item["subdir"].as_str().and_then(|s| s.parse::<u64>().ok()))
-                .ok_or_else(|| {
-                    PveSanError::ListVmError("VMID is missing or not a number".to_string())
-                })?;
-            let status = item["status"].as_str().unwrap_or("unknown").to_string();
+                let mut vms = Vec::new();
+                for item in data {
+                    let vmid = item["vmid"]
+                        .as_u64()
+                        .or_else(|| item["vmid"].as_str().and_then(|s| s.parse::<u64>().ok()))
+                        .or_else(|| item["subdir"].as_u64())
+                        .or_else(|| item["subdir"].as_str().and_then(|s| s.parse::<u64>().ok()))
+                        .ok_or_else(|| {
+                            PveSanError::ListVmError("VMID is missing or not a number".to_string())
+                        })?;
+                    let status = item["status"].as_str().unwrap_or("unknown").to_string();
 
-            if status == "running" {
-                vms.push((vmid, status));
+                    if status == "running" {
+                        vms.push((vmid, status));
+                    }
+                }
+                Ok(vms)
+            }
+            PveMode::LocalFiles => {
+                let dir_path = if let Ok(test_dir) = std::env::var("PVE_SAN_TEST_DATA_DIR") {
+                    std::path::Path::new(&test_dir)
+                        .parent()
+                        .map(|p| p.join("pve/local/qemu-server"))
+                        .unwrap_or_else(|| std::path::PathBuf::from("/etc/pve/local/qemu-server"))
+                } else {
+                    std::path::PathBuf::from("/etc/pve/local/qemu-server")
+                };
+
+                let mut vms = Vec::new();
+                if dir_path.exists() {
+                    let entries = std::fs::read_dir(&dir_path).map_err(|e| {
+                        let dir_path_str = dir_path.display();
+                        PveSanError::ListVmError(format!(
+                            "Failed to read config directory '{dir_path_str}': {e}"
+                        ))
+                    })?;
+
+                    for entry in entries {
+                        let entry = entry.map_err(|e| {
+                            PveSanError::ListVmError(format!("Failed to read directory entry: {e}"))
+                        })?;
+                        let path = entry.path();
+                        if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("conf"))
+                        {
+                            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                                if let Ok(vmid) = stem.parse::<u64>() {
+                                    vms.push((vmid, "running".to_string()));
+                                }
+                            }
+                        }
+                    }
+                }
+                vms.sort_by_key(|(vmid, _)| *vmid);
+                Ok(vms)
             }
         }
-
-        Ok(vms)
     }
 
     // NOTE: `vmid` is currently a u64, preventing path traversal vulnerabilities.
@@ -645,7 +710,7 @@ pub async fn get_san_storage_info_with_pvesh(
     node: &str,
     pvesh_command: &str,
 ) -> PveSanResult<SanStorageInfo> {
-    let config = PveSanConfig::new(node, Some(pvesh_command))?;
+    let config = PveSanConfig::new(node, Some(pvesh_command))?.with_mode(PveMode::Pvesh);
     let client = PveSanClient::new(config);
     client.get_san_storage_info().await
 }
@@ -900,5 +965,43 @@ mod tests {
             extracted.push(vmid);
         }
         assert_eq!(extracted, vec![123, 456, 789, 999]);
+    }
+
+    #[tokio::test]
+    async fn test_list_running_vms_local_files() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let test_data_path = manifest_dir.parent().unwrap().join("test-data/pvesh");
+
+        struct EnvGuard {
+            saved: Option<String>,
+        }
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                if let Some(val) = &self.saved {
+                    std::env::set_var("PVE_SAN_TEST_DATA_DIR", val);
+                } else {
+                    std::env::remove_var("PVE_SAN_TEST_DATA_DIR");
+                }
+            }
+        }
+        let saved = std::env::var("PVE_SAN_TEST_DATA_DIR").ok();
+        let _guard = EnvGuard { saved };
+        std::env::set_var("PVE_SAN_TEST_DATA_DIR", &test_data_path);
+
+        let config = PveSanConfig::with_node("pve001").unwrap();
+        assert_eq!(config.mode(), PveMode::LocalFiles);
+
+        let client = PveSanClient::new(config);
+        let vms = client.list_running_vms().await.unwrap();
+
+        let mut expected = vec![
+            104, 105, 114, 116, 117, 122, 126, 130, 131, 132, 133, 140, 141, 144, 145, 147,
+        ];
+        expected.sort_unstable();
+
+        let mut vmids: Vec<u64> = vms.iter().map(|(vmid, _)| *vmid).collect();
+        vmids.sort_unstable();
+
+        assert_eq!(vmids, expected);
     }
 }
