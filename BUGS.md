@@ -116,15 +116,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 38. `send_command_on_fd` has unclear fd ownership semantics on partial failure
 
-**File**: `libmultipath/src/lib.rs:127-146`
+**File**: `libmultipath/src/lib.rs:132-151`
 **Severity**: MEDIUM
-**Status**: OPEN
+**Status**: FIXED
 
-**Description**: The function wraps a raw fd using `from_raw_fd`, performs I/O, then disowns it with `into_raw_fd` to prevent the stream destructor from closing the fd. However, if the I/O operation fails partway through (e.g., write succeeds but read times out), the fd has already been disowned. The caller cannot determine whether the fd is still in a usable state. The SAFETY comment states "The caller guarantees fd is valid" but does not address partial failure semantics.
+**Description**: The function wrapped a raw fd using `from_raw_fd`, performed I/O, then disowned it with `into_raw_fd` to prevent the stream destructor from closing the fd. However, if the I/O operation failed partway through (e.g., write succeeded but read timed out), the fd was already disowned. Furthermore, if a panic occurred during the I/O operation, the stream's destructor would run and close the fd, violating the caller's ownership.
 
-**Impact**: Potential fd corruption or use-after-close if the caller attempts to reuse the fd after a partial failure.
+**Impact**: Potential fd corruption or use-after-close on failures or panics.
 
-**Recommendation**: Document the partial failure behavior explicitly. Consider requiring the caller to provide a fresh fd for each call, or use a separate fd for the write and read operations.
+**Resolution**: Wrapped the wrapped `UnixStream` inside `std::mem::ManuallyDrop`. This ensures that even if `send_command_on_stream` panics, or returns an error partway through, the stream's destructor is never run, and the file descriptor is never closed by Rust. The caller retains clean and safe ownership of the fd.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
@@ -132,13 +134,15 @@ Each entry includes the file, line, description, severity, and resolution status
 
 **File**: `libpve-san/src/lib.rs:468-496`
 **Severity**: MEDIUM
-**Status**: OPEN
+**Status**: FIXED
 
-**Description**: The function has a hardcoded recursion depth limit of 32. When this limit is exceeded, it logs a warning and returns, potentially missing multipath devices in deeper nesting levels. The depth limit is not configurable and there is no way for the caller to know that some devices were not mapped.
+**Description**: The function previously had a hardcoded recursion depth limit of 32. When this limit was exceeded, it logged a warning and returned, potentially missing multipath devices in deeper nesting levels.
 
-**Impact**: In systems with deeply nested device-mapper hierarchies (>32 levels), some multipath devices may not be discovered, leading to missed fencing.
+**Impact**: In systems with deeply nested device-mapper hierarchies (>32 levels), some multipath devices may not have been discovered, leading to missed fencing.
 
-**Recommendation**: Make the depth limit configurable or document the rationale for 32. Consider using an iterative approach to avoid recursion limits entirely.
+**Resolution**: Refactored the `build_mpath_map` logic from a recursive implementation to an iterative, stack-based traversal (using a vector on the heap as a stack). This completely removes the recursion depth limits and stack overflow risks, allowing arbitrary depth traversal of the block device hierarchy safely.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 

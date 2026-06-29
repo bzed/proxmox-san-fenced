@@ -23,6 +23,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Helper to get the workspace root directory
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR is the directory containing pve-san-query's Cargo.toml
@@ -55,6 +57,7 @@ static RUN_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Run pve-san-query with pvesh-mock in PATH
 fn run_pve_san_query(args: &[&str]) -> Vec<u8> {
+    let _lock = TEST_MUTEX.lock().unwrap();
     let count = RUN_COUNTER.fetch_add(1, Ordering::SeqCst);
     let unique_temp = env::temp_dir().join(format!(
         "pve-san-query-test-run-{}-{}",
@@ -138,6 +141,7 @@ static FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
 fn test_pve_san_query_with_output_file() {
+    let _lock = TEST_MUTEX.lock().unwrap();
     let count = FILE_COUNTER.fetch_add(1, Ordering::SeqCst);
     let unique_temp = env::temp_dir().join(format!(
         "pve-san-query-file-test-{}-{}",
@@ -278,6 +282,7 @@ fn test_pve_san_query_no_node_local_files() {
 
 #[test]
 fn test_pve_san_query_no_node_pvesh_fails() {
+    let _lock = TEST_MUTEX.lock().unwrap();
     let count = RUN_COUNTER.fetch_add(1, Ordering::SeqCst);
     let unique_temp = env::temp_dir().join(format!(
         "pve-san-query-test-run-{}-{}",

@@ -330,7 +330,7 @@ impl PveSanClient {
             if let Some(json_content) = self.get_lsblk_json().await {
                 if let Ok(lsblk_output) = serde_json::from_str::<LsblkOutput>(&json_content) {
                     if let Some(devices) = lsblk_output.blockdevices {
-                        self.build_mpath_map(&devices, None, 0, &mut mpath_map);
+                        self.build_mpath_map(&devices, &mut mpath_map);
                     }
                 }
             }
@@ -468,29 +468,27 @@ impl PveSanClient {
     fn build_mpath_map(
         &self,
         devices: &[LsblkDevice],
-        current_mpath: Option<&str>,
-        depth: u32,
         map: &mut HashMap<String, HashSet<String>>,
     ) {
-        if depth > 32 {
-            warn!("Exceeded maximum recursion depth of 32 in build_mpath_map");
-            return;
-        }
-        for dev in devices {
-            let next_mpath = if dev.device_type == "mpath" {
-                Some(dev.name.as_str())
-            } else {
-                current_mpath
-            };
+        let mut stack = vec![(devices, None)];
 
-            if let Some(mpath) = next_mpath {
-                map.entry(dev.name.clone())
-                    .or_default()
-                    .insert(mpath.to_string());
-            }
+        while let Some((devs, current_mpath)) = stack.pop() {
+            for dev in devs {
+                let next_mpath = if dev.device_type == "mpath" {
+                    Some(dev.name.as_str())
+                } else {
+                    current_mpath
+                };
 
-            if let Some(children) = &dev.children {
-                self.build_mpath_map(children, next_mpath, depth + 1, map);
+                if let Some(mpath) = next_mpath {
+                    map.entry(dev.name.clone())
+                        .or_default()
+                        .insert(mpath.to_string());
+                }
+
+                if let Some(children) = &dev.children {
+                    stack.push((children, next_mpath));
+                }
             }
         }
     }

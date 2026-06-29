@@ -140,14 +140,13 @@ impl MultipathConnection {
                 "Invalid file descriptor",
             ));
         }
-        // SAFETY: The caller guarantees fd is valid. We temporarily wrap it, do the I/O,
-        // and then disown it to prevent closing.
+        // SAFETY: The caller guarantees fd is valid. We temporarily wrap it in a
+        // ManuallyDrop to prevent the stream destructor from closing it, even if a panic occurs.
         use std::os::fd::FromRawFd;
-        use std::os::fd::IntoRawFd;
+        use std::mem::ManuallyDrop;
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
-        let res = Self::send_command_on_stream(&stream, command, timeout_ms);
-        let _ = stream.into_raw_fd();
-        res
+        let stream = ManuallyDrop::new(stream);
+        Self::send_command_on_stream(&stream, command, timeout_ms)
     }
 
     /// Sends a command without receiving a reply.
