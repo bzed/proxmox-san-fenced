@@ -352,8 +352,8 @@ Each entry includes the file, line, description, severity, and resolution status
 
 **File**: `man/` directory
 **Severity**: LOW
-**Status**: OPEN
+**Status**: WONTFIX
 
 **Description**: Man pages are static files rather than generated from doc comments. This means they can drift from the actual CLI interface.
 
-**Recommendation**: Consider generating man pages from clap's built-in help using `clap_mangen` to keep them in sync.
+**Argumentation**: Generating the man pages dynamically using tools like `clap_mangen` would lose the extensive custom formatting and documentation sections present in the static man pages (e.g., custom synopsis, detailed MULTIPATH CONFIGURATION block, specific system FILES description, and environment variable mapping table). Maintaining these sections dynamically from within the Rust codebase would require building a complex custom generator, introducing additional build-time dependencies, and complicating the Debian packaging pipeline which directly installs the static man files. Therefore, maintaining static man pages in the repository is the most practical and informative approach.
