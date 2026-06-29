@@ -13,6 +13,8 @@ pve-san-fenced \- SAN fencing daemon for Proxmox VE
 [\fB\-\-sysrq\-char\fR|\fB\-\-sysrq\-chars\fR \fIsequence\fR]
 [\fB\-t\fR | \fB\-\-test\-mode\fR]
 [\fB\-\-debug\fR]
+[\fB\-\-status\fR]
+[\fB\-\-status\-file\fR \fIpath\fR]
 .SH DESCRIPTION
 .B pve-san-fenced
 is a daemon that monitors the health of SAN/FC multipath storage devices actively used by running VMs on a Proxmox VE node. If all paths to the storage are lost persistently across multiple cycles, the daemon initiates a reboot or kernel panic using the Linux SysRq trigger to prevent split-brain conditions or VM corruption (fencing).
@@ -47,6 +49,12 @@ Run the daemon in test/dry-run mode. Fencing decisions and transitions are logge
 .TP
 .B \-\-debug
 Enable debug log mode to log discovered VMs, storages, and multipath devices with their state on each discovery run.
+.TP
+.B \-\-status
+Query and print the current daemon status from the status file, exiting with the corresponding Nagios-compatible exit code (0=OK, 1=WARNING, 2=CRITICAL, 3=UNKNOWN).
+.TP
+.BI \-\-status\-file " path"
+Path to write the Nagios-compatible status file. Default is /run/pve-san-fenced/status.
 .SH ENVIRONMENT
 .TP
 .B PVE_SAN_POLL_INTERVAL
@@ -75,6 +83,9 @@ If set (to a non-empty, non-false value), enables debug log mode. Corresponds to
 .TP
 .B PVE_SAN_SYSRQ_CHAR
 Comma-separated list of characters to write to /proc/sysrq-trigger when fencing. Corresponds to \fB\-\-sysrq\-char\fR / \fB\-\-sysrq\-chars\fR.
+.TP
+.B PVE_SAN_STATUS_FILE
+Path to write the Nagios-compatible status file. Corresponds to \fB\-\-status\-file\fR.
 .TP
 .B PVE_SAN_FENCE_DRY_RUN
 If set, the daemon acts as if running in test mode internally and exits instead of writing to the SysRq trigger.
@@ -118,5 +129,8 @@ Used to verify at startup if the configured SysRq character(s) are allowed by th
 .TP
 .I /proc/sysrq-trigger
 Written to trigger fencing.
+.TP
+.I /run/pve-san-fenced/status
+Default location of the Nagios-compatible status file containing the current aggregated daemon health.
 .SH AUTHOR
 Bernd Zeimetz <bernd@bzed.de>
