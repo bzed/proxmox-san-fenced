@@ -111,7 +111,7 @@ struct Cli {
     #[arg(
         long = "status-file",
         env = "PVE_SAN_STATUS_FILE",
-        default_value = "/run/pve-san-fenced.status"
+        default_value = "/run/pve-san-fenced/status"
     )]
     status_file: String,
 
@@ -817,7 +817,7 @@ mod tests {
             test_mode: true,
             sysrq_char: "c".to_string(),
             status: false,
-            status_file: "/run/pve-san-fenced.status".to_string(),
+            status_file: "/run/pve-san-fenced/status".to_string(),
             debug: false,
             discovery_max_retries: 5,
             discovery_backoff_base: 1,
@@ -864,7 +864,7 @@ mod tests {
             test_mode: true,
             sysrq_char: "c".to_string(),
             status: false,
-            status_file: "/run/pve-san-fenced.status".to_string(),
+            status_file: "/run/pve-san-fenced/status".to_string(),
             debug: false,
             discovery_max_retries: 5,
             discovery_backoff_base: 1,

@@ -893,7 +893,7 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
             5. If the sequence does not include or trigger a reboot via `'b'`, attempt to write `"b"` as a fallback to ensure the node reboots.
 
 3. **Status Reporting (Nagios Compatible)**:
-   - Provide a mechanism to output the current daemon status in a Nagios-compatible format. This can be implemented by periodically writing to a status file (e.g., `/run/pve-san-fenced.status`), offering a query socket, or similar low-overhead methods.
+   - Provide a mechanism to output the current daemon status in a Nagios-compatible format. This can be implemented by periodically writing to a status file (e.g., `/run/pve-san-fenced/status`), offering a query socket, or similar low-overhead methods.
    - **CRITICAL**: Set status to CRITICAL in case of a non-transient FC issue, especially when the fencing/rebooting operation failed or when the daemon is operating in dry-run mode (where rebooting is skipped but a critical failure occurred).
    - **WARNING**: Set status to WARNING whenever the daemon runs into an issue that triggers a `warn!()` log. This includes, but is not limited to: stale active LUN data, multipath configuration discrepancies, missing `dm_st` fields, SysRq configuration/state read problems, transient multipathd query failures, or discovery thread backoffs.
    - **OK**: Return OK if the daemon is happy, there are no configuration issues, and no FC or VM-related problems are currently detected.
