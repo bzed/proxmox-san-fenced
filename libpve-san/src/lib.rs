@@ -664,7 +664,11 @@ impl PveSanClient {
         let mut disks = Vec::new();
         let disk_prefixes = ["scsi", "virtio", "sata", "ide", "efidisk"];
 
-        for (key, value) in config_map {
+        let mut sorted_keys: Vec<&String> = config_map.keys().collect();
+        sorted_keys.sort();
+
+        for key in sorted_keys {
+            let value = &config_map[key];
             for prefix in &disk_prefixes {
                 if let Some(index_str) = key.strip_prefix(prefix) {
                     if index_str.is_empty() {

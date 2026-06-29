@@ -148,15 +148,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 40. `extract_disks` iterates over HashMap in non-deterministic order
 
-**File**: `libpve-san/src/lib.rs:665-708` (`extract_disks`)
+**File**: `libpve-san/src/lib.rs:663-706` (`extract_disks`)
 **Severity**: MEDIUM
-**Status**: OPEN
+**Status**: FIXED
 
-**Description**: The function iterates over `config_map` (a `HashMap`) at line 669. HashMap iteration order is randomized in Rust for security reasons. While the final result is sorted by `device_id` at line 705, intermediate operations (e.g., the `parse_disk_value` call, the `tracing::warn!` for invalid keys) happen in non-deterministic order. This could affect log output ordering and, in theory, any code that depends on the order of side effects.
+**Description**: The function previously iterated directly over `config_map` (a `HashMap`). HashMap iteration order is randomized in Rust for security reasons. While the final result was sorted by `device_id` at line 705, intermediate warning logging and formatting occurred in non-deterministic order.
 
-**Impact**: Non-deterministic log output; potential subtle bugs if future code depends on iteration order.
+**Impact**: Non-deterministic warning logs.
 
-**Recommendation**: Sort the config_map keys before iterating, or collect into a Vec and sort.
+**Resolution**: Collected the keys of the `config_map` into a vector, sorted them alphabetically, and iterated over the sorted keys to fetch values. This ensures fully deterministic warning log output and side-effects.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
