@@ -168,6 +168,8 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
     }
 }
 
+static FENCING_IN_PROGRESS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[tracing::instrument]
 pub async fn trigger_fencing(sysrq_char: &str) {
     warn!("SAN FENCER: Total persistent storage loss detected. Threshold met.");
@@ -175,6 +177,11 @@ pub async fn trigger_fencing(sysrq_char: &str) {
     if env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
         warn!("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon.");
         std::process::exit(/*code*/ 0);
+    }
+
+    if FENCING_IN_PROGRESS.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        warn!("SAN FENCER: Fencing operation already in progress. Ignoring duplicate request.");
+        return;
     }
 
     let chars: Vec<char> = sysrq_char
@@ -193,6 +200,16 @@ pub async fn trigger_fencing(sysrq_char: &str) {
             error!("Failed to write '{c}' to sysrq-trigger: {e}");
         } else if c == 'b' {
             sent_reboot = true;
+            let timeout_secs = match env::var("PVE_SAN_FENCE_REBOOT_TIMEOUT") {
+                Ok(val) => val.parse::<u64>().unwrap_or(10),
+                Err(_) => 10,
+            };
+            warn!("SAN FENCER: Sent reboot character 'b'. Waiting {timeout_secs} seconds for system to reboot...");
+            tokio::time::sleep(Duration::from_secs(timeout_secs)).await;
+            error!("SAN FENCER: CRITICAL: System did not reboot after {timeout_secs} seconds! Trying 'b' again...");
+            if let Err(err) = tokio::fs::write("/proc/sysrq-trigger", "b").await {
+                error!("Failed to write fallback 'b' to sysrq-trigger: {err}");
+            }
         }
 
         if c == 's' {
@@ -207,6 +224,11 @@ pub async fn trigger_fencing(sysrq_char: &str) {
         if let Err(err) = tokio::fs::write("/proc/sysrq-trigger", "b").await {
             error!("Failed to write fallback 'b' to sysrq-trigger: {err}");
         }
+        let timeout_secs = match env::var("PVE_SAN_FENCE_REBOOT_TIMEOUT") {
+            Ok(val) => val.parse::<u64>().unwrap_or(10),
+            Err(_) => 10,
+        };
+        tokio::time::sleep(Duration::from_secs(timeout_secs)).await;
     }
 }
 

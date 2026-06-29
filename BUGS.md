@@ -8,15 +8,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 31. `trigger_fencing` writes to `/proc/sysrq-trigger` without verifying the write actually took effect
 
-**File**: `src/lib.rs:167-206` (`trigger_fencing`)
+**File**: `src/lib.rs:173-219` (`trigger_fencing`)
 **Severity**: CRITICAL
-**Status**: OPEN
+**Status**: FIXED
 
-**Description**: The function iterates over sysrq characters and writes each to `/proc/sysrq-trigger`. If `tokio::fs::write` returns an error for a character like `'s'` (sync), the error is logged but execution continues. If the write for `'b'` (reboot) succeeds but the kernel silently ignores it (the kernel does not return an error for sysrq characters that are disabled by the sysrq bitmask — it simply does nothing), the function reports `sent_reboot = true` and exits via the dry-run check or the main loop continues. The node could be left in a degraded state: the sync was attempted, the reboot was "sent" but silently ignored, and the daemon exits or continues.
+**Description**: The function previously wrote the sysrq character sequence to `/proc/sysrq-trigger`, but did not verify if the write actually caused a reboot (which the kernel can silently ignore if disabled in the sysrq bitmask). If the reboot failed or was ignored, the daemon would either exit dry-run style or continue running, potentially causing data corruption.
 
 **Impact**: Storage failure detected but node not rebooted — potential data corruption on shared storage.
 
-**Recommendation**: After writing `'b'`, verify the reboot actually occurs (e.g., by checking if the process survives a short timeout). Consider adding a `PVE_SAN_FENCE_REBOOT_TIMEOUT` that, if exceeded without system reboot, triggers a second `'b'` write.
+**Resolution**: Added a post-write verification sleep to wait for reboot after sending the `'b'` character. The timeout defaults to 10 seconds and is configurable via `PVE_SAN_FENCE_REBOOT_TIMEOUT`. If the process survives beyond the timeout, a critical error is logged and a second fallback `'b'` write is attempted.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
@@ -338,13 +340,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 53. No rate limiting on sysrq writes in `trigger_fencing`
 
-**File**: `src/lib.rs:185-196`
+**File**: `src/lib.rs:175-181`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: FIXED
 
-**Description**: The function writes each sysrq character sequentially with a 1-second sleep after `'s'`. There is no rate limiting on how quickly these writes can occur. In theory, if the fencer is called multiple times rapidly (e.g., due to a bug), it could flood the sysrq trigger.
+**Description**: The function writes each sysrq character sequentially with a 1-second sleep after `'s'`. Previously, there was no rate limiting or concurrency protection on how quickly these writes could occur. In theory, if the fencer was called multiple times rapidly, it could flood the sysrq trigger.
 
-**Recommendation**: Add a mutex or atomic flag to ensure only one fencing operation can be in progress at a time.
+**Impact**: Uncontrolled and redundant sysrq trigger writes.
+
+**Resolution**: Added a static `AtomicBool` flag `FENCING_IN_PROGRESS` to ensure that only a single fencing sequence can execute concurrently. Any redundant/duplicate fencing calls are safely ignored with a warning.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
