@@ -84,29 +84,33 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 36. `extract_defaults_block` cannot handle `}` inside quoted strings
 
-**File**: `src/main.rs:88-105` (`extract_defaults_block`)
+**File**: `src/main.rs:236-319` (`extract_defaults_block`)
 **Severity**: HIGH
-**Status**: OPEN
+**Status**: FIXED
 
-**Description**: The function uses simple brace counting to find the closing `}` of a `defaults { ... }` block. If any config value contains a `}` character (even inside quotes), the brace counter will decrement prematurely and return truncated content. For example, a value like `my_value "}"` would cause the function to return `my_value "` as the block content.
+**Description**: The function previously used simple brace counting to find the closing `}` of a `defaults { ... }` block. If any config value contained a `}` character (even inside quotes), the brace counter decremented prematurely and returned truncated content. For example, a value like `my_value "}"` would cause the function to return `my_value "` as the block content.
 
 **Impact**: Incorrect multipath config parsing, leading to false warnings or missed configuration values.
 
-**Recommendation**: Use a proper config parser or track whether the current position is inside quotes when counting braces.
+**Resolution**: Replaced the naive brace counting loop with a scanner that respects double-quoted strings (and escaped double quotes `""`) and comments (`#` and `!`). Inside quotes and comments, `{` and `}` are ignored. Added unit test `test_check_multipath_config` case to verify that a brace inside a quoted string is correctly ignored and does not terminate the block.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
 ### 37. `validate_sysrq` silently skips validation when `PVE_SAN_FENCE_DRY_RUN` is set
 
-**File**: `src/main.rs:189-242` (`validate_sysrq`)
+**File**: `src/main.rs:224-277` (`validate_sysrq`)
 **Severity**: HIGH
-**Status**: OPEN
+**Status**: FIXED
 
-**Description**: At lines 209-211, if the `PVE_SAN_FENCE_DRY_RUN` environment variable is set, the function returns `Ok(())` without validating any characters. This means invalid characters like `'x'`, `'@'`, or `'\n'` pass validation silently. While `trigger_fencing` also checks for this env var and exits before writing, the validation function's behavior is misleading and could cause issues if the env var is set/unset between validation and execution.
+**Description**: At lines 209-211 (in older versions), if the `PVE_SAN_FENCE_DRY_RUN` environment variable was set, the function returned `Ok(())` without validating any characters. This meant invalid characters like `'x'`, `'@'`, or `'\n'` passed validation silently. While `trigger_fencing` also checked for this env var and exited before writing, the validation function's behavior was misleading and could cause issues if the env var was set/unset between validation and execution.
 
 **Impact**: Invalid sysrq characters accepted without warning in dry-run mode, potentially masking configuration errors.
 
-**Recommendation**: Always validate characters regardless of dry-run mode; the dry-run check should only skip the sysrq bitmask verification at lines 213-239.
+**Resolution**: The check for `PVE_SAN_FENCE_DRY_RUN` was moved to after character validation, so character validity checks run regardless of whether dry-run mode is active. Only the actual `/proc/sys/kernel/sysrq` bitmask checking and warning logic is bypassed when in dry-run mode. Added a unit test `test_validate_sysrq_characters` case to assert that invalid characters are still rejected under dry-run mode.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
@@ -224,15 +228,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 46. `check_multipath_config` comment stripping is naive
 
-**File**: `src/main.rs:127-129`
+**File**: `src/main.rs:120-221` (`tokenize` and `check_multipath_config`)
 **Severity**: LOW
-**Status**: OPEN
+**Status**: FIXED
 
-**Description**: Comments are stripped using `split_once('#')`, which only removes the first `#` on each line. If a config value contains a `#` character (e.g., a WWID or identifier), it would be incorrectly truncated.
+**Description**: Comments were previously stripped using `split_once('#')` on each line, which removed everything after the first `#` on that line. If a config value contained a `#` character (e.g., inside quotes), it was incorrectly truncated.
 
-**Impact**: Unlikely in practice — multipath config values rarely contain `#` — but the parser is fragile.
+**Impact**: Broken config parsing if a value containing `#` was parsed.
 
-**Recommendation**: Use a proper config parser that respects quoted strings.
+**Resolution**: Replaced the naive `split_once('#')` logic with a proper tokenization step. The new `tokenize` function parses words/quotes/braces while skipping comments (`#` and `!`) only when they are outside double-quoted strings. Added unit test `test_check_multipath_config` case to verify that a comment character inside a quoted string is correctly parsed as a literal character rather than truncating the value.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
@@ -240,7 +246,7 @@ Each entry includes the file, line, description, severity, and resolution status
 
 **File**: `src/main.rs:176-187`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: WONTFIX
 
 **Description**: The function maps known sysrq characters to bit values but uses a wildcard arm for all unknown characters. While this is correct behavior (rejecting unknown chars), the exhaustive mapping is not documented. New sysrq characters added in future kernel versions would be silently rejected.
 
@@ -270,7 +276,7 @@ Each entry includes the file, line, description, severity, and resolution status
 
 **File**: `src/main.rs:24-28`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: WONTFIX
 
 **Description**: If `/proc/sys/kernel/hostname` is unreadable, the function falls back to `"localhost"` without logging a warning. This could cause the daemon to operate with an incorrect node name, leading to fencing the wrong node or failing to find the node directory.
 
@@ -312,7 +318,7 @@ Each entry includes the file, line, description, severity, and resolution status
 
 **File**: `libpve-san/src/lib.rs:327-328` and elsewhere
 **Severity**: LOW
-**Status**: OPEN
+**Status**: WONTFIX
 
 **Description**: The `PVE_SAN_TEST_DATA_DIR` environment variable changes the behavior of `get_san_storage_info` in production code paths. If this env var is accidentally set in a production environment, the daemon would read from test data files instead of the real `/sys` filesystem.
 

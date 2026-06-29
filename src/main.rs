@@ -120,27 +120,165 @@ struct Cli {
     discovery_backoff_max: u64,
 }
 
-fn extract_defaults_block(config: &str) -> Option<&str> {
-    let start_idx = config.find("defaults {")?;
-    let content_start = start_idx + "defaults {".len();
-    let mut brace_count = 1;
-    let mut end_idx = None;
-    for (i, c) in config[content_start..].char_indices() {
-        if c == '{' {
-            brace_count += 1;
-        } else if c == '}' {
-            brace_count -= 1;
-            if brace_count == 0 {
-                end_idx = Some(content_start + i);
-                break;
+#[derive(Debug, PartialEq, Eq)]
+enum Token {
+    Word(String),
+    OpenBrace,
+    CloseBrace,
+}
+
+fn tokenize(config: &str) -> Vec<Token> {
+    let mut tokens = Vec::new();
+    let mut chars = config.char_indices().peekable();
+    let mut current_word = String::new();
+    let mut in_quote = false;
+
+    while let Some((_, c)) = chars.next() {
+        if in_quote {
+            if c == '"' {
+                if chars.peek().map(|&(_, next_c)| next_c) == Some('"') {
+                    chars.next();
+                    current_word.push('"');
+                } else {
+                    in_quote = false;
+                    tokens.push(Token::Word(current_word.clone()));
+                    current_word.clear();
+                }
+            } else {
+                current_word.push(c);
+            }
+        } else {
+            match c {
+                c if c.is_whitespace() => {
+                    if !current_word.is_empty() {
+                        tokens.push(Token::Word(current_word.clone()));
+                        current_word.clear();
+                    }
+                }
+                '#' | '!' => {
+                    if !current_word.is_empty() {
+                        tokens.push(Token::Word(current_word.clone()));
+                        current_word.clear();
+                    }
+                    while let Some(&(_, next_c)) = chars.peek() {
+                        if next_c == '\n' || next_c == '\r' {
+                            break;
+                        }
+                        chars.next();
+                    }
+                }
+                '{' => {
+                    if !current_word.is_empty() {
+                        tokens.push(Token::Word(current_word.clone()));
+                        current_word.clear();
+                    }
+                    tokens.push(Token::OpenBrace);
+                }
+                '}' => {
+                    if !current_word.is_empty() {
+                        tokens.push(Token::Word(current_word.clone()));
+                        current_word.clear();
+                    }
+                    tokens.push(Token::CloseBrace);
+                }
+                '"' => {
+                    if !current_word.is_empty() {
+                        tokens.push(Token::Word(current_word.clone()));
+                        current_word.clear();
+                    }
+                    in_quote = true;
+                }
+                _ => {
+                    current_word.push(c);
+                }
             }
         }
     }
-    end_idx.map(|end| &config[content_start..end])
+
+    if !current_word.is_empty() {
+        tokens.push(Token::Word(current_word));
+    }
+
+    tokens
 }
 
-fn normalize_val(val: &str) -> &str {
-    val.trim_matches(|c| c == '"' || c == '\'')
+fn extract_defaults_block(config: &str) -> Option<&str> {
+    let mut chars = config.char_indices().peekable();
+    let mut in_quote = false;
+    let mut brace_depth = 0;
+    let mut defaults_start_byte_idx = None;
+    let mut defaults_end_byte_idx = None;
+    let mut in_defaults_block = false;
+    let mut last_word = String::new();
+    let mut word_start = None;
+
+    while let Some((idx, c)) = chars.next() {
+        if in_quote {
+            if c == '"' {
+                if chars.peek().map(|&(_, next_c)| next_c) == Some('"') {
+                    chars.next();
+                } else {
+                    in_quote = false;
+                }
+            }
+            continue;
+        }
+
+        match c {
+            '#' | '!' => {
+                while let Some(&(_, next_c)) = chars.peek() {
+                    if next_c == '\n' || next_c == '\r' {
+                        break;
+                    }
+                    chars.next();
+                }
+            }
+            '"' => {
+                in_quote = true;
+            }
+            '{' => {
+                if brace_depth == 0 && last_word == "defaults" {
+                    in_defaults_block = true;
+                    defaults_start_byte_idx = Some(idx + 1);
+                }
+                brace_depth += 1;
+                last_word.clear();
+                word_start = None;
+            }
+            '}' => {
+                if brace_depth > 0 {
+                    brace_depth -= 1;
+                    if in_defaults_block && brace_depth == 0 {
+                        defaults_end_byte_idx = Some(idx);
+                        break;
+                    }
+                }
+                last_word.clear();
+                word_start = None;
+            }
+            c if c.is_whitespace() => {
+                if word_start.is_some() {
+                    word_start = None;
+                }
+            }
+            _ => {
+                if brace_depth == 0 {
+                    if word_start.is_none() {
+                        word_start = Some(idx);
+                        last_word.clear();
+                    }
+                    last_word.push(c);
+                }
+            }
+        }
+    }
+
+    if let (Some(start), Some(end)) = (defaults_start_byte_idx, defaults_end_byte_idx) {
+        if start <= end && end <= config.len() {
+            return Some(&config[start..end]);
+        }
+    }
+    None
 }
 
 fn check_multipath_config(config_str: &str) -> Vec<String> {
@@ -153,26 +291,23 @@ fn check_multipath_config(config_str: &str) -> Vec<String> {
         }
     };
 
+    let tokens = tokenize(defaults_content);
     let mut polling_interval = None;
     let mut no_path_retry = None;
     let mut fast_io_fail_tmo = None;
     let mut dev_loss_tmo = None;
 
-    for line in defaults_content.lines() {
-        let line = match line.split_once('#') {
-            Some((before, _)) => before,
-            None => line,
-        };
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 {
-            let key = parts[0];
-            let val = normalize_val(parts[1]);
-            match key {
-                "polling_interval" => polling_interval = Some(val.to_string()),
-                "no_path_retry" => no_path_retry = Some(val.to_string()),
-                "fast_io_fail_tmo" => fast_io_fail_tmo = Some(val.to_string()),
-                "dev_loss_tmo" => dev_loss_tmo = Some(val.to_string()),
-                _ => {}
+    let mut iter = tokens.into_iter();
+    while let Some(token) = iter.next() {
+        if let Token::Word(key) = token {
+            if let Some(Token::Word(val)) = iter.next() {
+                match key.as_str() {
+                    "polling_interval" => polling_interval = Some(val),
+                    "no_path_retry" => no_path_retry = Some(val),
+                    "fast_io_fail_tmo" => fast_io_fail_tmo = Some(val),
+                    "dev_loss_tmo" => dev_loss_tmo = Some(val),
+                    _ => {}
+                }
             }
         }
     }
@@ -506,6 +641,25 @@ mod tests {
         assert!(validate_sysrq("s,b,@").is_err());
         assert!(validate_sysrq("").is_err());
         assert!(validate_sysrq(",,").is_err());
+
+        // With PVE_SAN_FENCE_DRY_RUN set
+        struct LocalEnvGuard(Option<String>);
+        impl Drop for LocalEnvGuard {
+            fn drop(&mut self) {
+                if let Some(val) = &self.0 {
+                    std::env::set_var("PVE_SAN_FENCE_DRY_RUN", val);
+                } else {
+                    std::env::remove_var("PVE_SAN_FENCE_DRY_RUN");
+                }
+            }
+        }
+        let _guard = LocalEnvGuard(std::env::var("PVE_SAN_FENCE_DRY_RUN").ok());
+        std::env::set_var("PVE_SAN_FENCE_DRY_RUN", "1");
+
+        // Invalid scenarios should still fail under dry-run
+        assert!(validate_sysrq("x").is_err());
+        assert!(validate_sysrq("s,b,x").is_err());
+        assert!(validate_sysrq("s,b,@").is_err());
     }
 
     #[test]
@@ -664,6 +818,38 @@ defaults {
             "no_path_retry is not configured (expected queue)".to_string(),
             "fast_io_fail_tmo is not configured (expected 5)".to_string(),
             "dev_loss_tmo is not configured (expected infinity)".to_string(),
+        ];
+        assert_eq!(warnings, expected);
+
+        // Test for bug 36: brace inside quoted string
+        let brace_in_quote_config = r#"
+defaults {
+    verbosity 2
+    polling_interval 5
+    no_path_retry "queue}"
+    fast_io_fail_tmo 5
+    dev_loss_tmo "infinity"
+}
+"#;
+        let warnings = check_multipath_config(brace_in_quote_config);
+        let expected = vec![
+            "no_path_retry is set to 'queue}' instead of 'queue'".to_string(),
+        ];
+        assert_eq!(warnings, expected);
+
+        // Test for bug 46: comment character inside quoted string
+        let comment_in_quote_config = r#"
+defaults {
+    verbosity 2
+    polling_interval 5
+    no_path_retry "queue#1"
+    fast_io_fail_tmo 5
+    dev_loss_tmo "infinity"
+}
+"#;
+        let warnings = check_multipath_config(comment_in_quote_config);
+        let expected = vec![
+            "no_path_retry is set to 'queue#1' instead of 'queue'".to_string(),
         ];
         assert_eq!(warnings, expected);
     }
