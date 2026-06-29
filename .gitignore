@@ -2,3 +2,4 @@
 /.cargo_home
 /.rustup_home
 /build-output
+*.swp
