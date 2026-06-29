@@ -18,6 +18,8 @@ use std::time::Duration;
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct MultipathOutput {
+    pub(crate) major_version: Option<u32>,
+    pub(crate) minor_version: Option<u32>,
     pub(crate) maps: Option<Vec<MultipathMap>>,
 }
 
@@ -132,7 +134,10 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
         for pg in pgs {
             let pg_alive = match &pg.dm_st {
                 Some(st) => st != "offline" && st != "failed",
-                None => true,
+                None => {
+                    warn!("dm_st is missing for path group in map '{}'", map.name);
+                    true
+                }
             };
             if !pg_alive {
                 continue;
@@ -147,7 +152,7 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
                             break;
                         }
                     } else {
-                        // If dm_st is missing, assume it might be alive to prevent false reboots
+                        warn!("dm_st is missing for path in map '{}'", map.name);
                         active_path_found = true;
                         break;
                     }
@@ -243,8 +248,17 @@ impl Fencer {
             return false;
         }
 
-        let output: MultipathOutput = match serde_json::from_str(response_json) {
-            Ok(out) => out,
+        let output: MultipathOutput = match serde_json::from_str::<MultipathOutput>(response_json) {
+            Ok(out) => {
+                if let (Some(major), Some(minor)) = (out.major_version, out.minor_version) {
+                    if major != 0 {
+                        warn!("Unsupported multipathd JSON schema version: {major}.{minor}");
+                    }
+                } else {
+                    warn!("Missing version fields in multipathd JSON response");
+                }
+                out
+            }
             Err(e) => {
                 warn!("Failed to parse multipathd response: {e}");
                 return false;

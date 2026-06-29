@@ -54,15 +54,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 34. `is_map_dead` returns `false` (alive) when path group has `dm_st` set to `None`
 
-**File**: `src/lib.rs:133-136` (`is_map_dead`)
+**File**: `src/lib.rs:130-164` (`is_map_dead`)
 **Severity**: HIGH
-**Status**: OPEN
+**Status**: FIXED
 
 **Description**: When a path group's `dm_st` field is `None` (missing from the JSON), the function treats it as alive (`true` at line 135). The comment at line 150 says "assume it might be alive to prevent false reboots". However, if multipathd's JSON schema changes and `dm_st` is simply omitted for a failed path group, the function will incorrectly consider the map alive. This is a silent failure mode that could prevent fencing when it should trigger.
 
 **Impact**: Silent failure to fence when multipathd JSON format changes or omits expected fields.
 
-**Recommendation**: Add a warning log when `dm_st` is `None` for a path group, making the assumption explicit in logs. Consider adding a schema version check on multipathd responses.
+**Resolution**: Added a warning log whenever `dm_st` is `None` for a path group or a path, making the fallback assumption explicit. Combined this with schema version checks in `Fencer::update` to identify changes in the JSON output structure from `multipathd`.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
@@ -220,15 +222,17 @@ Each entry includes the file, line, description, severity, and resolution status
 
 ### 45. `Fencer::update` accepts raw JSON string — no schema validation
 
-**File**: `src/lib.rs:239-255` (`update`)
+**File**: `src/lib.rs:242-267` (`update` and `MultipathOutput`)
 **Severity**: MEDIUM
-**Status**: OPEN
+**Status**: FIXED
 
-**Description**: The `update` method parses multipathd JSON response with `serde_json::from_str`. If multipathd changes its JSON schema (e.g., adds new fields, changes field names), serde will silently ignore unknown fields by default. This means the fencer could operate on incomplete data without any warning.
+**Description**: The `update` method parsed multipathd JSON response with `serde_json::from_str`. If multipathd changed its JSON schema (e.g., added new fields, changed field names), serde silently ignored unknown fields by default. This meant the fencer could operate on incomplete data without any warning.
 
 **Impact**: Silent degradation if multipathd JSON format changes.
 
-**Recommendation**: Consider using `#[serde(deny_unknown_fields)]` on the `MultipathOutput` struct to catch schema changes, or add explicit schema version checking.
+**Resolution**: Added `major_version` and `minor_version` fields to `MultipathOutput` struct. Updated `Fencer::update` to check for these fields and print clear warning logs if they are missing or if the `major_version` is not `0`, alerting operators to potential incompatibilities.
+
+**Recommendation**: N/A - Fixed.
 
 ---
 
