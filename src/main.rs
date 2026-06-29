@@ -458,17 +458,40 @@ async fn main() {
     let cli = Cli::parse();
     if cli.status {
         let path = &cli.status_file;
+        // Check if file is outdated (modified time exceeds threshold)
+        if let Ok(metadata) = std::fs::metadata(path) {
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(elapsed) = modified.elapsed() {
+                    let threshold = std::cmp::max(30, 3 * cli.poll_interval);
+                    if elapsed.as_secs() > threshold {
+                        println!(
+                            "UNKNOWN - Status file is outdated (last modified {} seconds ago)",
+                            elapsed.as_secs()
+                        );
+                        std::process::exit(3);
+                    }
+                }
+            }
+        }
+
         match std::fs::read_to_string(path) {
             Ok(content) => {
                 let trimmed = content.trim();
-                println!("{trimmed}");
+                if trimmed.is_empty() {
+                    println!("UNKNOWN - Status file is empty");
+                    std::process::exit(3);
+                }
                 if trimmed.starts_with("OK -") {
+                    println!("{trimmed}");
                     std::process::exit(0);
                 } else if trimmed.starts_with("WARNING -") {
+                    println!("{trimmed}");
                     std::process::exit(1);
                 } else if trimmed.starts_with("CRITICAL -") {
+                    println!("{trimmed}");
                     std::process::exit(2);
                 } else {
+                    println!("UNKNOWN - Badly formatted status file: {trimmed}");
                     std::process::exit(3);
                 }
             }

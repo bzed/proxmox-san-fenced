@@ -958,4 +958,51 @@ fn test_integration_status_cli_check() {
 
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "CRITICAL - Reboot failed");
+
+    // 5. Write badly formatted status to file and check (should exit 3)
+    fs::write(&status_file_path, "INVALID STATUS FORMAT\n").unwrap();
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer binary for status query");
+
+    assert_eq!(output.status.code(), Some(3));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("UNKNOWN - Badly formatted status file"));
+
+    // 6. Write empty status file (should exit 3)
+    fs::write(&status_file_path, "").unwrap();
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer binary for status query");
+
+    assert_eq!(output.status.code(), Some(3));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("UNKNOWN - Status file is empty"));
+
+    // 7. Outdated status file (should exit 3)
+    fs::write(&status_file_path, "OK - Daemon is happy\n").unwrap();
+    let touch_status = Command::new("touch")
+        .arg("-d")
+        .arg("1 hour ago")
+        .arg(&status_file_path)
+        .status()
+        .expect("Failed to run touch command");
+    assert!(touch_status.success());
+
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer binary for status query");
+
+    assert_eq!(output.status.code(), Some(3));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("UNKNOWN - Status file is outdated"));
 }
