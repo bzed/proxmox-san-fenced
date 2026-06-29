@@ -16,6 +16,8 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::time::Duration;
 
+pub mod status;
+
 #[derive(Deserialize, Debug)]
 pub(crate) struct MultipathOutput {
     pub(crate) major_version: Option<u32>,
@@ -135,7 +137,13 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
             let pg_alive = match &pg.dm_st {
                 Some(st) => st != "offline" && st != "failed",
                 None => {
-                    warn!("dm_st is missing for path group in map '{}'", map.name);
+                    let map_name = &map.name;
+                    warn!("dm_st is missing for path group in map '{map_name}'");
+                    crate::status::get_status_tracker().set_issue(
+                        &format!("missing_dm_st_{map_name}"),
+                        crate::status::StatusLevel::Warning,
+                        format!("dm_st is missing for map '{map_name}'"),
+                    );
                     true
                 }
             };
@@ -152,7 +160,13 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
                             break;
                         }
                     } else {
-                        warn!("dm_st is missing for path in map '{}'", map.name);
+                        let map_name = &map.name;
+                        warn!("dm_st is missing for path in map '{map_name}'");
+                        crate::status::get_status_tracker().set_issue(
+                            &format!("missing_dm_st_{map_name}"),
+                            crate::status::StatusLevel::Warning,
+                            format!("dm_st is missing for map '{map_name}'"),
+                        );
                         active_path_found = true;
                         break;
                     }
@@ -297,6 +311,7 @@ impl Fencer {
         maps: &[MultipathMap],
         active_luns: &HashSet<String>,
     ) -> bool {
+        crate::status::get_status_tracker().clear_issues_with_prefix("missing_dm_st_");
         debug!("All multipath maps returned from multipathd: {maps:?}");
 
         let monitored_maps: Vec<&MultipathMap> = maps
@@ -393,7 +408,8 @@ impl Fencer {
             self.consecutive_failures = self.consecutive_failures.saturating_add(1);
             let cf = self.consecutive_failures;
             let mf = self.max_failures;
-            warn!("Consecutive storage failure: {cf}/{mf}");
+            let msg = format!("Consecutive storage failure: {cf}/{mf}");
+            warn!("{msg}");
 
             if self.consecutive_failures >= self.max_failures {
                 let dead_map_names: Vec<String> = monitored_maps
@@ -406,17 +422,32 @@ impl Fencer {
                     })
                     .collect();
                 let targets = &self.target_wwids;
-                warn!(
+                let decision_msg = format!(
                     "DECISION: Rebooting node because monitored multipath maps in use by running VMs have failed. \
                      Failed monitored maps: {dead_map_names:?}. Active LUNs: {active_luns:?}. Target WWIDs: {targets:?}."
                 );
+                warn!("{decision_msg}");
+
+                crate::status::get_status_tracker().set_issue(
+                    "fencing",
+                    crate::status::StatusLevel::Critical,
+                    format!("Fencing decision reached: {decision_msg}"),
+                );
+
                 return true;
+            } else {
+                crate::status::get_status_tracker().set_issue(
+                    "fencing",
+                    crate::status::StatusLevel::Warning,
+                    msg,
+                );
             }
         } else {
             if self.consecutive_failures > 0 {
                 info!("Storage connectivity restored. Resetting failure counter.");
             }
             self.consecutive_failures = 0;
+            crate::status::get_status_tracker().clear_issue("fencing");
         }
 
         false

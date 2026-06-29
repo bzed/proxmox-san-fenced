@@ -103,6 +103,18 @@ struct Cli {
     )]
     sysrq_char: String,
 
+    /// Query and print the daemon status from the status file, exiting with the corresponding Nagios exit code
+    #[arg(long)]
+    status: bool,
+
+    /// Path to write Nagios-compatible status file
+    #[arg(
+        long = "status-file",
+        env = "PVE_SAN_STATUS_FILE",
+        default_value = "/run/pve-san-fenced.status"
+    )]
+    status_file: String,
+
     /// Enable debug log mode to log discovered VMs, storages, and multipath devices with their state on each discovery run
     #[arg(long, env = "PVE_SAN_DEBUG")]
     debug: bool,
@@ -387,24 +399,48 @@ fn validate_sysrq(sysrq_chars: &str) -> Result<(), String> {
             match val_str.parse::<i32>() {
                 Ok(val) => {
                     if val == 0 {
-                        warn!("CRITICAL: SysRq is disabled (value is 0) in {sysrq_path}. Fencing operations will fail!");
+                        let msg = format!("SysRq is disabled (value is 0) in {sysrq_path}. Fencing operations will fail!");
+                        warn!("CRITICAL: {msg}");
+                        pve_san_fenced::status::get_status_tracker().set_issue(
+                            "sysrq",
+                            pve_san_fenced::status::StatusLevel::Warning,
+                            msg,
+                        );
                     } else if val != 1 {
                         for c in chars {
                             if let Some(bit) = sysrq_char_to_bit(c) {
                                 if (val & bit) == 0 {
-                                    warn!("CRITICAL: Configured SysRq char '{c}' is disabled by {sysrq_path} bitmask ({val_str})!");
+                                    let msg = format!("Configured SysRq char '{c}' is disabled by {sysrq_path} bitmask ({val_str})!");
+                                    warn!("CRITICAL: {msg}");
+                                    pve_san_fenced::status::get_status_tracker().set_issue(
+                                        &format!("sysrq_{c}"),
+                                        pve_san_fenced::status::StatusLevel::Warning,
+                                        msg,
+                                    );
                                 }
                             }
                         }
                     }
                 }
                 Err(_) => {
-                    warn!("Could not parse {sysrq_path} value: {val_str}");
+                    let msg = format!("Could not parse {sysrq_path} value: {val_str}");
+                    warn!("{msg}");
+                    pve_san_fenced::status::get_status_tracker().set_issue(
+                        "sysrq_parse",
+                        pve_san_fenced::status::StatusLevel::Warning,
+                        msg,
+                    );
                 }
             }
         }
         Err(e) => {
-            warn!("Failed to read {sysrq_path}: {e}. Unable to verify SysRq state.");
+            let msg = format!("Failed to read {sysrq_path}: {e}. Unable to verify SysRq state.");
+            warn!("{msg}");
+            pve_san_fenced::status::get_status_tracker().set_issue(
+                "sysrq_read",
+                pve_san_fenced::status::StatusLevel::Warning,
+                msg,
+            );
         }
     }
 
@@ -420,16 +456,60 @@ async fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
+    if cli.status {
+        let path = &cli.status_file;
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                let trimmed = content.trim();
+                println!("{trimmed}");
+                if trimmed.starts_with("OK -") {
+                    std::process::exit(0);
+                } else if trimmed.starts_with("WARNING -") {
+                    std::process::exit(1);
+                } else if trimmed.starts_with("CRITICAL -") {
+                    std::process::exit(2);
+                } else {
+                    std::process::exit(3);
+                }
+            }
+            Err(e) => {
+                println!("UNKNOWN - Failed to read status file '{path}': {e}");
+                std::process::exit(3);
+            }
+        }
+    }
+
+    // Set the status file immediately so that errors/warnings are reported
+    pve_san_fenced::status::get_status_tracker().set_status_file(Some(cli.status_file.clone()));
+
     if cli.poll_interval == 0 {
-        error!("poll-interval cannot be 0");
+        let msg = "poll-interval cannot be 0".to_string();
+        error!("{msg}");
+        pve_san_fenced::status::get_status_tracker().set_issue(
+            "config_error",
+            pve_san_fenced::status::StatusLevel::Critical,
+            msg,
+        );
         std::process::exit(1);
     }
     if cli.max_failures == 0 {
-        error!("max-failures cannot be 0");
+        let msg = "max-failures cannot be 0".to_string();
+        error!("{msg}");
+        pve_san_fenced::status::get_status_tracker().set_issue(
+            "config_error",
+            pve_san_fenced::status::StatusLevel::Critical,
+            msg,
+        );
         std::process::exit(1);
     }
     if cli.discovery_interval == 0 {
-        error!("discovery-interval cannot be 0");
+        let msg = "discovery-interval cannot be 0".to_string();
+        error!("{msg}");
+        pve_san_fenced::status::get_status_tracker().set_issue(
+            "config_error",
+            pve_san_fenced::status::StatusLevel::Critical,
+            msg,
+        );
         std::process::exit(1);
     }
     let base_dir =
@@ -437,7 +517,13 @@ async fn main() {
     let node_dir = std::path::Path::new(&base_dir).join(&cli.node_name);
     if !node_dir.is_dir() {
         let display_path = node_dir.display();
-        error!("Node directory '{display_path}' does not exist under {base_dir}");
+        let msg = format!("Node directory '{display_path}' does not exist under {base_dir}");
+        error!("{msg}");
+        pve_san_fenced::status::get_status_tracker().set_issue(
+            "config_error",
+            pve_san_fenced::status::StatusLevel::Critical,
+            msg,
+        );
         std::process::exit(1);
     }
     let node = &cli.node_name;
@@ -447,17 +533,37 @@ async fn main() {
     match libmultipath::send_multipath_command_to_socket(&cli.socket, "show config") {
         Ok(config_response) => {
             let warnings = check_multipath_config(&config_response);
-            for warning in warnings {
+            for warning in &warnings {
                 warn!("Multipath configuration recommendation warning: {warning}");
+            }
+            if !warnings.is_empty() {
+                let msg = format!("Multipath configuration recommendation warnings: {}", warnings.join("; "));
+                pve_san_fenced::status::get_status_tracker().set_issue(
+                    "config_warnings",
+                    pve_san_fenced::status::StatusLevel::Warning,
+                    msg,
+                );
             }
         }
         Err(e) => {
-            warn!("Failed to query multipathd config to verify parameters: {e}");
+            let msg = format!("Failed to query multipathd config to verify parameters: {e}");
+            warn!("{msg}");
+            pve_san_fenced::status::get_status_tracker().set_issue(
+                "config_query_error",
+                pve_san_fenced::status::StatusLevel::Warning,
+                msg,
+            );
         }
     }
 
     if let Err(e) = validate_sysrq(&cli.sysrq_char) {
-        error!("Configuration error: {e}");
+        let msg = format!("Configuration error: {e}");
+        error!("{msg}");
+        pve_san_fenced::status::get_status_tracker().set_issue(
+            "config_error",
+            pve_san_fenced::status::StatusLevel::Critical,
+            msg,
+        );
         std::process::exit(1);
     }
 
@@ -498,6 +604,8 @@ async fn main() {
                         match fut.await {
                             Ok(mpaths) => {
                                 consecutive_failures = 0;
+                                pve_san_fenced::status::get_status_tracker().clear_issue("discovery_failure");
+                                pve_san_fenced::status::get_status_tracker().clear_issue("discovery_backoff");
                                 let mut lock = active_luns_clone.write().await;
                                 if lock.luns != mpaths {
                                     let prev = &lock.luns;
@@ -507,7 +615,13 @@ async fn main() {
                             }
                             Err(e) => {
                                 consecutive_failures += 1;
-                                error!("Error discovering active multipath devices: {e}");
+                                let msg = format!("Error discovering active multipath devices: {e}");
+                                error!("{msg}");
+                                pve_san_fenced::status::get_status_tracker().set_issue(
+                                    "discovery_failure",
+                                    pve_san_fenced::status::StatusLevel::Warning,
+                                    msg,
+                                );
                             }
                         }
                     }
@@ -520,7 +634,13 @@ async fn main() {
                         } else {
                             "Unknown panic error".to_string()
                         };
-                        error!("Panic in discovery thread: {error_msg}");
+                        let msg = format!("Panic in discovery thread: {error_msg}");
+                        error!("{msg}");
+                        pve_san_fenced::status::get_status_tracker().set_issue(
+                            "discovery_failure",
+                            pve_san_fenced::status::StatusLevel::Warning,
+                            msg,
+                        );
                     }
                 }
 
@@ -533,9 +653,14 @@ async fn main() {
                             backoff_base.saturating_mul(2u64.pow(backoff_exp as u32)),
                             backoff_max,
                         );
-                        warn!(
-                            "Discovery thread: {} consecutive failures, backing off for {} seconds",
-                            consecutive_failures, backoff_seconds
+                        let msg = format!(
+                            "Discovery thread: {consecutive_failures} consecutive failures, backing off for {backoff_seconds} seconds"
+                        );
+                        warn!("{msg}");
+                        pve_san_fenced::status::get_status_tracker().set_issue(
+                            "discovery_backoff",
+                            pve_san_fenced::status::StatusLevel::Warning,
+                            msg,
                         );
                         tokio::time::sleep(Duration::from_secs(backoff_seconds)).await;
                     } else {
@@ -575,10 +700,16 @@ async fn main() {
         
         // Check if the data is too stale to use
         if active_data.is_stale(discovery_interval_duration) {
-            warn!(
-                "Active LUN data is stale (older than 2x discovery interval). Skipping fencer update to avoid race condition with discovery thread."
+            let msg = "Active LUN data is stale (older than 2x discovery interval). Skipping fencer update to avoid race condition with discovery thread.".to_string();
+            warn!("{msg}");
+            pve_san_fenced::status::get_status_tracker().set_issue(
+                "stale_luns",
+                pve_san_fenced::status::StatusLevel::Warning,
+                msg,
             );
             continue;
+        } else {
+            pve_san_fenced::status::get_status_tracker().clear_issue("stale_luns");
         }
         
         let active_set = active_data.luns;
@@ -587,9 +718,18 @@ async fn main() {
         // Query multipathd
         let response =
             match libmultipath::send_multipath_command_to_socket(&socket, "show maps json") {
-                Ok(res) => res,
+                Ok(res) => {
+                    pve_san_fenced::status::get_status_tracker().clear_issue("query_failure");
+                    res
+                }
                 Err(e) => {
-                    warn!("Failed to query multipathd: {e}");
+                    let msg = format!("Failed to query multipathd: {e}");
+                    warn!("{msg}");
+                    pve_san_fenced::status::get_status_tracker().set_issue(
+                        "query_failure",
+                        pve_san_fenced::status::StatusLevel::Warning,
+                        msg,
+                    );
                     // Incrementing consecutive failures here could trigger reboot on transient daemon restarts.
                     // We just log warning as per the specification.
                     continue;
@@ -676,6 +816,8 @@ mod tests {
             pvesh_command: "pvesh".to_string(),
             test_mode: true,
             sysrq_char: "c".to_string(),
+            status: false,
+            status_file: "/run/pve-san-fenced.status".to_string(),
             debug: false,
             discovery_max_retries: 5,
             discovery_backoff_base: 1,
@@ -721,6 +863,8 @@ mod tests {
             pvesh_command: "pvesh".to_string(),
             test_mode: true,
             sysrq_char: "c".to_string(),
+            status: false,
+            status_file: "/run/pve-san-fenced.status".to_string(),
             debug: false,
             discovery_max_retries: 5,
             discovery_backoff_base: 1,

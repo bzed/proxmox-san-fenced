@@ -73,6 +73,18 @@ fn start_mockd(ctx: &mut TestContext, file_map: &str) {
     let mockd_bin = workspace.join("target/debug/mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
+    // Write a mock config file to temp_dir that passes validation with no warnings
+    let mock_config_path = ctx.temp_dir.join("mock_show_config.txt");
+    let mock_config_content = r#"
+defaults {
+    polling_interval 5
+    no_path_retry "queue"
+    fast_io_fail_tmo 5
+    dev_loss_tmo "infinity"
+}
+"#;
+    fs::write(&mock_config_path, mock_config_content).unwrap();
+
     let child = Command::new(mockd_bin)
         .arg("--socket")
         .arg(&ctx.socket_path)
@@ -80,6 +92,8 @@ fn start_mockd(ctx: &mut TestContext, file_map: &str) {
         .arg(test_data_dir)
         .arg("--file-map")
         .arg(file_map)
+        .arg("--file-map")
+        .arg(format!("show config={}", mock_config_path.to_str().unwrap()))
         .arg("--verbose") // Enable verbose logging in the mock daemon
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -838,4 +852,110 @@ fn test_integration_discovery_backoff() {
         !full_logs.contains("SAN FENCER: Total persistent storage loss detected"),
         "Fencing should NOT have been triggered during discovery failures:\n{full_logs}"
     );
+}
+
+#[test]
+fn test_integration_status_reporting_transitions() {
+    let mut ctx = TestContext::new("status_reporting", "pve001");
+    let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
+
+    // Start mock daemon with healthy -> failed -> healthy maps
+    start_mockd(
+        &mut ctx,
+        "show maps json=all_active_running.json,failed_all_timeout.json,all_active_running.json",
+    );
+
+    // Start fencer daemon with custom status-file argument
+    start_fencer(
+        &mut ctx,
+        "pve001",
+        &[
+            "--status-file",
+            status_file_path.to_str().unwrap(),
+        ],
+    );
+
+    // Helper to poll status file
+    let wait_for_status = |predicate: fn(&str) -> bool, timeout: Duration| -> String {
+        let start = std::time::Instant::now();
+        while start.elapsed() < timeout {
+            if let Ok(content) = fs::read_to_string(&status_file_path) {
+                if predicate(&content) {
+                    return content;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        fs::read_to_string(&status_file_path).unwrap_or_default()
+    };
+
+    // 1. Wait for initial OK status
+    let content = wait_for_status(|c| c.starts_with("OK -"), Duration::from_secs(3));
+    assert!(content.starts_with("OK -"), "Expected OK status, got: {content}");
+
+    // 2. Wait for transition to WARNING (poll failures)
+    let content = wait_for_status(|c| c.starts_with("WARNING -"), Duration::from_secs(3));
+    assert!(content.starts_with("WARNING -"), "Expected WARNING status, got: {content}");
+    assert!(content.contains("Consecutive storage failure"), "Expected storage failure info in: {content}");
+
+    // 3. Wait for transition back to OK (upon recovery)
+    let content = wait_for_status(|c| c.starts_with("OK -"), Duration::from_secs(5));
+    assert!(content.starts_with("OK -"), "Expected recovered OK status, got: {content}");
+}
+
+#[test]
+fn test_integration_status_cli_check() {
+    let ctx = TestContext::new("status_cli_check", "pve001");
+    let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
+
+    // 1. Check with non-existent status file (should exit 3)
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer binary for status query");
+
+    assert_eq!(output.status.code(), Some(3));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("UNKNOWN - Failed to read status file"));
+
+    // 2. Write OK status to file and check (should exit 0)
+    fs::write(&status_file_path, "OK - Daemon is happy\n").unwrap();
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer binary for status query");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "OK - Daemon is happy");
+
+    // 3. Write WARNING status to file and check (should exit 1)
+    fs::write(&status_file_path, "WARNING - Stale data\n").unwrap();
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer binary for status query");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "WARNING - Stale data");
+
+    // 4. Write CRITICAL status to file and check (should exit 2)
+    fs::write(&status_file_path, "CRITICAL - Reboot failed\n").unwrap();
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer binary for status query");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "CRITICAL - Reboot failed");
 }
