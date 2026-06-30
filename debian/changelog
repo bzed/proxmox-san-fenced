@@ -1,3 +1,36 @@
+pve-san-fenced (0.1.5) unstable; urgency=medium
+
+  * [f849add] Document recommended multipath settings in README.md
+  * [4b41c87] Document recommended multipath settings in pve-san-fenced manpage
+  * [2f453ae] Update documentation to reflect recent architectural changes
+  * [1711677] Update list of current bugs.
+  * [2a8c153] Fix systemd service file security and reliability issues
+  * [e5b531b] Fix bug 35: Add connection timeout to multipath socket connection
+  * [e27f06e] Agents: pure rust only.
+  * [7f36de0] Fix bug 33: Add exponential backoff and panic recovery to discovery thread
+  * [122fb2c] Add integration test for discovery backoff with failing pvesh
+  * [ec37026] Fix duplicated #[test] attribute in integration test
+  * [87b479b] Fix Bug 32: Race condition between active LUN set read and multipathd query
+  * [fcdf3f6] AGENTS: better commit info
+  * [76bb6b5] Fix multipath config parsing and SysRq validation bugs
+  * [5f81f56] ignore vim swap files
+  * [bb40668] Fix file descriptor safety in libmultipath and recursion in libpve-san
+  * [b4815ff] Fix non-deterministic HashMap iteration in extract_disks
+  * [044d597] Fix schema version validation and warning logs on missing fields
+  * [64d3f14] Mark bug 54 as WONTFIX in BUGS.md
+  * [3e71436] Fix trigger_fencing reboot verification and rate limiting
+  * [7cf902f] Remove list of fixed/wontfix bugs
+  * [6f581d6] Implement Nagios-compatible status reporting for pve-san-fenced
+  * [67a136f] Restore status reporting implementation plan section in PLAN.md
+  * [8a20511] Use systemd runtime directory and update default status file path
+  * [e5e4c46] Update daemon manpage and README.md with status reporting details
+  * [426eb1b] Test and handle empty, outdated, and invalid status files
+  * [9afc674] agent configs`
+  * [35408d7] Ensure status file writing is non-blocking and verify in all tests
+  * [b97fbeb] Verify status reporting in integration tests using fencer CLI check
+
+ -- Bernd Zeimetz <bzed@debian.org>  Tue, 30 Jun 2026 09:18:23 +0200
+
 pve-san-fenced (0.1.4) unstable; urgency=medium
 
   * [fe0c23c] AGENTS.md: describe commit format
