@@ -344,6 +344,17 @@ async fn main() {
         );
         exit_with_flush(1);
     }
+    if cli.node_name.contains('/') || cli.node_name.contains('\\') || cli.node_name.contains("..") {
+        let msg = format!("Invalid node name: {}", cli.node_name);
+        error!("{msg}");
+        pve_san_fenced::status::get_status_tracker().set_issue(
+            "config_error",
+            pve_san_fenced::status::StatusLevel::Critical,
+            msg,
+        );
+        exit_with_flush(1);
+    }
+
     let base_dir =
         std::env::var("PVE_SAN_SYS_NODES_DIR").unwrap_or_else(|_| "/etc/pve/nodes".to_string());
     let node_dir = std::path::Path::new(&base_dir).join(&cli.node_name);
