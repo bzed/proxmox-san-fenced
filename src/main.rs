@@ -132,228 +132,6 @@ struct Cli {
     discovery_backoff_max: u64,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum Token {
-    Word(String),
-    OpenBrace,
-    CloseBrace,
-}
-
-fn tokenize(config: &str) -> Vec<Token> {
-    let mut tokens = Vec::new();
-    let mut chars = config.char_indices().peekable();
-    let mut current_word = String::new();
-    let mut in_quote = false;
-
-    while let Some((_, c)) = chars.next() {
-        if in_quote {
-            if c == '"' {
-                if chars.peek().map(|&(_, next_c)| next_c) == Some('"') {
-                    chars.next();
-                    current_word.push('"');
-                } else {
-                    in_quote = false;
-                    tokens.push(Token::Word(current_word.clone()));
-                    current_word.clear();
-                }
-            } else {
-                current_word.push(c);
-            }
-        } else {
-            match c {
-                c if c.is_whitespace() => {
-                    if !current_word.is_empty() {
-                        tokens.push(Token::Word(current_word.clone()));
-                        current_word.clear();
-                    }
-                }
-                '#' | '!' => {
-                    if !current_word.is_empty() {
-                        tokens.push(Token::Word(current_word.clone()));
-                        current_word.clear();
-                    }
-                    while let Some(&(_, next_c)) = chars.peek() {
-                        if next_c == '\n' || next_c == '\r' {
-                            break;
-                        }
-                        chars.next();
-                    }
-                }
-                '{' => {
-                    if !current_word.is_empty() {
-                        tokens.push(Token::Word(current_word.clone()));
-                        current_word.clear();
-                    }
-                    tokens.push(Token::OpenBrace);
-                }
-                '}' => {
-                    if !current_word.is_empty() {
-                        tokens.push(Token::Word(current_word.clone()));
-                        current_word.clear();
-                    }
-                    tokens.push(Token::CloseBrace);
-                }
-                '"' => {
-                    if !current_word.is_empty() {
-                        tokens.push(Token::Word(current_word.clone()));
-                        current_word.clear();
-                    }
-                    in_quote = true;
-                }
-                _ => {
-                    current_word.push(c);
-                }
-            }
-        }
-    }
-
-    if !current_word.is_empty() {
-        tokens.push(Token::Word(current_word));
-    }
-
-    tokens
-}
-
-fn extract_defaults_block(config: &str) -> Option<&str> {
-    let mut chars = config.char_indices().peekable();
-    let mut in_quote = false;
-    let mut brace_depth = 0;
-    let mut defaults_start_byte_idx = None;
-    let mut defaults_end_byte_idx = None;
-    let mut in_defaults_block = false;
-    let mut last_word = String::new();
-    let mut word_start = None;
-
-    while let Some((idx, c)) = chars.next() {
-        if in_quote {
-            if c == '"' {
-                if chars.peek().map(|&(_, next_c)| next_c) == Some('"') {
-                    chars.next();
-                } else {
-                    in_quote = false;
-                }
-            }
-            continue;
-        }
-
-        match c {
-            '#' | '!' => {
-                while let Some(&(_, next_c)) = chars.peek() {
-                    if next_c == '\n' || next_c == '\r' {
-                        break;
-                    }
-                    chars.next();
-                }
-            }
-            '"' => {
-                in_quote = true;
-            }
-            '{' => {
-                if brace_depth == 0 && last_word == "defaults" {
-                    in_defaults_block = true;
-                    defaults_start_byte_idx = Some(idx + 1);
-                }
-                brace_depth += 1;
-                last_word.clear();
-                word_start = None;
-            }
-            '}' => {
-                if brace_depth > 0 {
-                    brace_depth -= 1;
-                    if in_defaults_block && brace_depth == 0 {
-                        defaults_end_byte_idx = Some(idx);
-                        break;
-                    }
-                }
-                last_word.clear();
-                word_start = None;
-            }
-            c if c.is_whitespace() => {
-                if word_start.is_some() {
-                    word_start = None;
-                }
-            }
-            _ => {
-                if brace_depth == 0 {
-                    if word_start.is_none() {
-                        word_start = Some(idx);
-                        last_word.clear();
-                    }
-                    last_word.push(c);
-                }
-            }
-        }
-    }
-
-    if let (Some(start), Some(end)) = (defaults_start_byte_idx, defaults_end_byte_idx) {
-        if start <= end && end <= config.len() {
-            return Some(&config[start..end]);
-        }
-    }
-    None
-}
-
-fn check_multipath_config(config_str: &str) -> Vec<String> {
-    let mut warnings = Vec::new();
-    let defaults_content = match extract_defaults_block(config_str) {
-        Some(content) => content,
-        None => {
-            warnings.push("No 'defaults' section found in multipath config".to_string());
-            return warnings;
-        }
-    };
-
-    let tokens = tokenize(defaults_content);
-    let mut polling_interval = None;
-    let mut no_path_retry = None;
-    let mut fast_io_fail_tmo = None;
-    let mut dev_loss_tmo = None;
-
-    let mut iter = tokens.into_iter();
-    while let Some(token) = iter.next() {
-        if let Token::Word(key) = token {
-            if let Some(Token::Word(val)) = iter.next() {
-                match key.as_str() {
-                    "polling_interval" => polling_interval = Some(val),
-                    "no_path_retry" => no_path_retry = Some(val),
-                    "fast_io_fail_tmo" => fast_io_fail_tmo = Some(val),
-                    "dev_loss_tmo" => dev_loss_tmo = Some(val),
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    match polling_interval.as_deref() {
-        Some("5") => {}
-        Some(val) => warnings.push(format!("polling_interval is set to '{val}' instead of '5'")),
-        None => warnings.push("polling_interval is not configured (expected 5)".to_string()),
-    }
-
-    match no_path_retry.as_deref() {
-        Some("queue") => {}
-        Some(val) => warnings.push(format!(
-            "no_path_retry is set to '{val}' instead of 'queue'"
-        )),
-        None => warnings.push("no_path_retry is not configured (expected queue)".to_string()),
-    }
-
-    match fast_io_fail_tmo.as_deref() {
-        Some("5") => {}
-        Some(val) => warnings.push(format!("fast_io_fail_tmo is set to '{val}' instead of '5'")),
-        None => warnings.push("fast_io_fail_tmo is not configured (expected 5)".to_string()),
-    }
-
-    match dev_loss_tmo.as_deref() {
-        Some("infinity") => {}
-        Some(val) => warnings.push(format!(
-            "dev_loss_tmo is set to '{val}' instead of 'infinity'"
-        )),
-        None => warnings.push("dev_loss_tmo is not configured (expected infinity)".to_string()),
-    }
-
-    warnings
-}
 
 fn sysrq_char_to_bit(c: char) -> Option<i32> {
     match c {
@@ -558,36 +336,6 @@ async fn main() {
     let node = &cli.node_name;
     info!("Starting PVE SAN fencing daemon on node: {node}");
 
-    // Validate multipathd configuration parameters on startup
-    match libmultipath::send_multipath_command_to_socket(&cli.socket, "show config") {
-        Ok(config_response) => {
-            let warnings = check_multipath_config(&config_response);
-            for warning in &warnings {
-                warn!("Multipath configuration recommendation warning: {warning}");
-            }
-            if !warnings.is_empty() {
-                let msg = format!(
-                    "Multipath configuration recommendation warnings: {}",
-                    warnings.join("; ")
-                );
-                pve_san_fenced::status::get_status_tracker().set_issue(
-                    "config_warnings",
-                    pve_san_fenced::status::StatusLevel::Warning,
-                    msg,
-                );
-            }
-        }
-        Err(e) => {
-            let msg = format!("Failed to query multipathd config to verify parameters: {e}");
-            warn!("{msg}");
-            pve_san_fenced::status::get_status_tracker().set_issue(
-                "config_query_error",
-                pve_san_fenced::status::StatusLevel::Warning,
-                msg,
-            );
-        }
-    }
-
     if let Err(e) = validate_sysrq(&cli.sysrq_char) {
         let msg = format!("Configuration error: {e}");
         error!("{msg}");
@@ -771,7 +519,30 @@ async fn main() {
                 }
             };
 
-        if fencer.update(&response, &active_set) {
+        let maps = if let Some(m) = pve_san_fenced::parse_multipathd_response(&response) {
+            m
+        } else {
+            // Parsing failed, skip fencer update to avoid triggering on bad JSON
+            continue;
+        };
+
+        match libmultipath::send_multipath_command_to_socket(&socket, "show config local") {
+            Ok(config_response) => {
+                pve_san_fenced::status::get_status_tracker().clear_issue("config_query_error");
+                pve_san_fenced::config::check_maps_config(&maps, &active_set, &config_response);
+            }
+            Err(e) => {
+                let msg = format!("Failed to query multipathd config: {e}");
+                warn!("{msg}");
+                pve_san_fenced::status::get_status_tracker().set_issue(
+                    "config_query_error",
+                    pve_san_fenced::status::StatusLevel::Warning,
+                    msg,
+                );
+            }
+        }
+
+        if fencer.update_with_maps(&maps, &active_set) {
             if test_mode {
                 info!("TEST MODE: Fencing decision reached, but not executing reboot/SysRq kernel panic.");
             } else {
@@ -950,82 +721,4 @@ mod tests {
         assert_eq!(cli_env.poll_interval, 15);
         assert_eq!(cli_env.max_failures, 10);
         assert!(cli_env.test_mode);
-    }
-
-    #[test]
-    fn test_check_multipath_config() {
-        let valid_config = r#"
-defaults {
-    verbosity 2
-    polling_interval 5
-    no_path_retry "queue"
-    fast_io_fail_tmo 5
-    dev_loss_tmo "infinity"
-}
-"#;
-        let warnings = check_multipath_config(valid_config);
-        assert!(
-            warnings.is_empty(),
-            "Expected no warnings, got: {warnings:?}"
-        );
-
-        let invalid_config = r#"
-defaults {
-    polling_interval 10
-    no_path_retry "fail"
-    fast_io_fail_tmo 15
-    dev_loss_tmo 30
-}
-"#;
-        let warnings = check_multipath_config(invalid_config);
-        let expected = vec![
-            "polling_interval is set to '10' instead of '5'".to_string(),
-            "no_path_retry is set to 'fail' instead of 'queue'".to_string(),
-            "fast_io_fail_tmo is set to '15' instead of '5'".to_string(),
-            "dev_loss_tmo is set to '30' instead of 'infinity'".to_string(),
-        ];
-        assert_eq!(warnings, expected);
-
-        let missing_config = r#"
-defaults {
-    verbosity 2
-}
-"#;
-        let warnings = check_multipath_config(missing_config);
-        let expected = vec![
-            "polling_interval is not configured (expected 5)".to_string(),
-            "no_path_retry is not configured (expected queue)".to_string(),
-            "fast_io_fail_tmo is not configured (expected 5)".to_string(),
-            "dev_loss_tmo is not configured (expected infinity)".to_string(),
-        ];
-        assert_eq!(warnings, expected);
-
-        // Test for bug 36: brace inside quoted string
-        let brace_in_quote_config = r#"
-defaults {
-    verbosity 2
-    polling_interval 5
-    no_path_retry "queue}"
-    fast_io_fail_tmo 5
-    dev_loss_tmo "infinity"
-}
-"#;
-        let warnings = check_multipath_config(brace_in_quote_config);
-        let expected = vec!["no_path_retry is set to 'queue}' instead of 'queue'".to_string()];
-        assert_eq!(warnings, expected);
-
-        // Test for bug 46: comment character inside quoted string
-        let comment_in_quote_config = r#"
-defaults {
-    verbosity 2
-    polling_interval 5
-    no_path_retry "queue#1"
-    fast_io_fail_tmo 5
-    dev_loss_tmo "infinity"
-}
-"#;
-        let warnings = check_multipath_config(comment_in_quote_config);
-        let expected = vec!["no_path_retry is set to 'queue#1' instead of 'queue'".to_string()];
-        assert_eq!(warnings, expected);
-    }
-}
+    }}
