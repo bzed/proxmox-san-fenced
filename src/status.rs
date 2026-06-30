@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 /// Nagios-compatible status levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -33,6 +33,7 @@ impl fmt::Display for StatusLevel {
 pub struct StatusTracker {
     status_file: RwLock<Option<String>>,
     active_issues: RwLock<HashMap<String, (StatusLevel, String)>>,
+    last_write_thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl Default for StatusTracker {
@@ -47,6 +48,7 @@ impl StatusTracker {
         Self {
             status_file: RwLock::new(None),
             active_issues: RwLock::new(HashMap::new()),
+            last_write_thread: Mutex::new(None),
         }
     }
 
@@ -99,6 +101,14 @@ impl StatusTracker {
         self.write_status_file();
     }
 
+    /// Wait for any pending status file writes to complete.
+    pub fn flush(&self) {
+        let mut guard = self.last_write_thread.lock().unwrap();
+        if let Some(handle) = guard.take() {
+            let _ = handle.join();
+        }
+    }
+
     /// Write the aggregated status line to the status file.
     fn write_status_file(&self) {
         let file_path_guard = self.status_file.read().unwrap();
@@ -129,7 +139,7 @@ impl StatusTracker {
         };
 
         // Spawn a thread to write the file so it never blocks the caller (especially during storage/IO locks)
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             let content = format!("{level} - {message}\n");
             let temp_file = format!("{}.tmp.{}", file_path, std::process::id());
             if let Err(e) = fs::write(&temp_file, content) {
@@ -141,6 +151,9 @@ impl StatusTracker {
                 let _ = fs::remove_file(&temp_file);
             }
         });
+
+        let mut guard = self.last_write_thread.lock().unwrap();
+        *guard = Some(handle);
     }
 }
 

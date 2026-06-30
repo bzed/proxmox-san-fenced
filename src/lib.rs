@@ -164,6 +164,8 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
             let pg_alive = match &pg.dm_st {
                 Some(st) => st != "offline" && st != "failed",
                 None => {
+                    // Safe tradeoff: if dm_st is missing, treat the path group as alive
+                    // to prevent false fencing/reboots due to transient API omissions.
                     let map_name = &map.name;
                     warn!("dm_st is missing for path group in map '{map_name}'");
                     crate::status::get_status_tracker().set_issue(
@@ -187,6 +189,8 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
                             break;
                         }
                     } else {
+                        // Safe tradeoff: if dm_st is missing, treat the individual path
+                        // as alive to prevent false fencing/reboots due to transient API omissions.
                         let map_name = &map.name;
                         warn!("dm_st is missing for path in map '{map_name}'");
                         crate::status::get_status_tracker().set_issue(
@@ -218,8 +222,8 @@ pub async fn trigger_fencing(sysrq_char: &str) {
 
     if env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
         warn!("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon.");
-        // Give the status writing thread a brief moment to write the final CRITICAL state
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        // Wait for the status writing thread to finish writing the final CRITICAL state
+        crate::status::get_status_tracker().flush();
         std::process::exit(/*code*/ 0);
     }
 
