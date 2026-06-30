@@ -27,8 +27,13 @@ pub struct MultipathOutput {
 }
 
 pub fn parse_multipathd_response(response_json: &str) -> Option<Vec<MultipathMap>> {
-    if response_json.len() > 10 * 1024 * 1024 {
-        warn!("Rejected multipathd response: size exceeds 10MB limit");
+    let max_size = env::var("PVE_SAN_MAX_RESPONSE_SIZE")
+        .ok()
+        .and_then(|val| val.parse::<usize>().ok())
+        .unwrap_or(100 * 1024 * 1024);
+
+    if response_json.len() > max_size {
+        warn!("Rejected multipathd response: size exceeds limit of {max_size} bytes");
         return None;
     }
 
@@ -983,9 +988,11 @@ mod tests {
         let mut fencer = Fencer::new(3, HashSet::new());
         let active = HashSet::new();
 
-        // 1. Check size limit (> 10MB)
+        // 1. Check size limit (configured to 10MB via env)
+        std::env::set_var("PVE_SAN_MAX_RESPONSE_SIZE", "10485760");
         let large_str = " ".repeat(10 * 1024 * 1024 + 1);
         assert!(!fencer.update(&large_str, &active));
+        std::env::remove_var("PVE_SAN_MAX_RESPONSE_SIZE");
 
         // 2. Check recursion limit
         // Deeply nested JSON array/objects to exceed default 128 level limit
