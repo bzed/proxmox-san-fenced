@@ -639,8 +639,8 @@ async fn main() {
                                 if lock.luns != mpaths {
                                     let prev = &lock.luns;
                                     info!("Active multipath devices changed. Previous: {prev:?}, New: {mpaths:?}");
-                                    *lock = ActiveLunsWithTimestamp::new(mpaths);
                                 }
+                                *lock = ActiveLunsWithTimestamp::new(mpaths);
                             }
                             Err(e) => {
                                 consecutive_failures += 1;
