@@ -1103,3 +1103,92 @@ fn test_integration_status_cli_check() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("UNKNOWN - Status file is outdated"));
 }
+
+#[test]
+fn test_integration_status_warning_updates() {
+    let mut ctx = TestContext::new("status_warning_updates", "pve001");
+    let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
+
+    // Write a custom mock config that triggers a dev_loss_tmo warning
+    let warning_config_path = ctx.temp_dir.join("mock_warning_config.txt");
+    let warning_config_content = r#"
+defaults {
+    polling_interval 5
+    no_path_retry "queue"
+    fast_io_fail_tmo 5
+}
+"#;
+    fs::write(&warning_config_path, warning_config_content).unwrap();
+
+    // Start mock daemon manually with the warning config mapped
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mockd_bin = workspace.join("target/debug/mpath-mockd");
+    let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
+
+    let child = Command::new(mockd_bin)
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--test-data-dir")
+        .arg(test_data_dir)
+        .arg("--file-map")
+        .arg("show maps json=all_active_running.json,failed_all_timeout.json")
+        .arg("--file-map")
+        .arg(format!("show config={}", warning_config_path.to_str().unwrap()))
+        .arg("--verbose")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start mpath-mockd");
+
+    ctx.mock_daemon = Some(child);
+    std::thread::sleep(Duration::from_millis(200));
+
+    // Start fencer daemon
+    start_fencer(
+        &mut ctx,
+        "pve001",
+        &[
+            "--status-file",
+            status_file_path.to_str().unwrap(),
+        ],
+    );
+
+    // Helper to query status from CLI
+    let query_status = || -> (Option<i32>, String) {
+        let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+        let output = Command::new(&fencer_bin)
+            .arg("--status")
+            .arg("--status-file")
+            .arg(&status_file_path)
+            .output()
+            .expect("Failed to run fencer in status-query mode");
+        (output.status.code(), String::from_utf8_lossy(&output.stdout).trim().to_string())
+    };
+
+    // 1. Initial status check: must report the dev_loss_tmo warning
+    let start = std::time::Instant::now();
+    let mut initial_ok = false;
+    while start.elapsed() < Duration::from_secs(3) {
+        let (code, stdout) = query_status();
+        if code == Some(1) && stdout.contains("dev_loss_tmo is not configured") {
+            initial_ok = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(initial_ok, "Initial warning status not written or incorrect");
+
+    // 2. Wait for the next poll cycle where maps are failed
+    // The status should update to include the consecutive storage failure warning
+    let mut updated_ok = false;
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_secs(5) {
+        let (code, stdout) = query_status();
+        if code == Some(1) && stdout.contains("Consecutive storage failure") && stdout.contains("dev_loss_tmo is not configured") {
+            updated_ok = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(updated_ok, "Status file was not updated with subsequent cycle failures");
+}
