@@ -170,9 +170,12 @@ fn start_fencer(ctx: &mut TestContext, node_name: &str, extra_args: &[&str]) {
         .arg("--poll-interval")
         .arg("1")
         .arg("--discovery-interval")
-        .arg("10")
-        .arg("--max-failures")
-        .arg("3");
+        .arg("10");
+
+    let has_max_failures = extra_args.iter().any(|arg| arg.starts_with("--max-failures"));
+    if !has_max_failures {
+        cmd.arg("--max-failures").arg("3");
+    }
 
     // Always ensure we have a status file inside temp_dir if not overridden
     let has_status_file = extra_args
@@ -1344,4 +1347,108 @@ fn test_integration_discovery_timestamp_no_stale() {
 
     // Verify status file is still OK (not WARNING/stale)
     assert_status_file(&status_file_path, "OK");
+}
+
+#[test]
+fn test_integration_multipath_config_ok() {
+    let mut ctx = TestContext::new("multipath_config_ok", "pve001");
+    let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
+
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mockd_bin = workspace.join("target/debug/mpath-mockd");
+    let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
+
+    let child = Command::new(mockd_bin)
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--test-data-dir")
+        .arg(test_data_dir)
+        .arg("--file-map")
+        .arg("show maps json=mpatha_active_mpathb_failed.json")
+        .arg("--file-map")
+        .arg("show config local=../show_config_local/ok.txt")
+        .arg("--verbose")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start mpath-mockd");
+
+    ctx.mock_daemon = Some(child);
+    std::thread::sleep(Duration::from_millis(200));
+
+    start_fencer(
+        &mut ctx,
+        "pve001",
+        &[
+            "--status-file",
+            status_file_path.to_str().unwrap(),
+            "--max-failures",
+            "9999",
+        ],
+    );
+
+    std::thread::sleep(Duration::from_secs(3));
+
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer in status-query mode");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("Multipath configuration recommendation warnings"));
+}
+
+#[test]
+fn test_integration_multipath_config_bad() {
+    let mut ctx = TestContext::new("multipath_config_bad", "pve001");
+    let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
+
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mockd_bin = workspace.join("target/debug/mpath-mockd");
+    let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
+
+    let child = Command::new(mockd_bin)
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--test-data-dir")
+        .arg(test_data_dir)
+        .arg("--file-map")
+        .arg("show maps json=mpatha_active_mpathb_failed.json")
+        .arg("--file-map")
+        .arg("show config local=../show_config_local/bad.txt")
+        .arg("--verbose")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start mpath-mockd");
+
+    ctx.mock_daemon = Some(child);
+    std::thread::sleep(Duration::from_millis(200));
+
+    start_fencer(
+        &mut ctx,
+        "pve001",
+        &[
+            "--status-file",
+            status_file_path.to_str().unwrap(),
+            "--max-failures",
+            "9999",
+        ],
+    );
+
+    std::thread::sleep(Duration::from_secs(3));
+
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer in status-query mode");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Multipath configuration recommendation warnings"));
 }

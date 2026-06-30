@@ -131,8 +131,14 @@ impl StatusTracker {
         // Spawn a thread to write the file so it never blocks the caller (especially during storage/IO locks)
         std::thread::spawn(move || {
             let content = format!("{level} - {message}\n");
-            if let Err(e) = fs::write(&file_path, content) {
-                log::error!("Failed to write status file '{file_path}': {e}");
+            let temp_file = format!("{}.tmp.{}", file_path, std::process::id());
+            if let Err(e) = fs::write(&temp_file, content) {
+                log::error!("Failed to write temporary status file '{temp_file}': {e}");
+                return;
+            }
+            if let Err(e) = fs::rename(&temp_file, &file_path) {
+                log::error!("Failed to rename temporary status file '{temp_file}' to '{file_path}': {e}");
+                let _ = fs::remove_file(&temp_file);
             }
         });
     }
