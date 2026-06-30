@@ -99,7 +99,7 @@ pub struct MultipathConfig {
 pub fn parse_multipath_config(config_str: &str) -> MultipathConfig {
     let tokens = tokenize(config_str);
     let mut config = MultipathConfig::default();
-    let mut iter = tokens.into_iter();
+    let mut iter = tokens.into_iter().peekable();
 
     while let Some(token) = iter.next() {
         match token {
@@ -143,7 +143,31 @@ pub fn parse_multipath_config(config_str: &str) -> MultipathConfig {
     config
 }
 
-fn parse_block(iter: &mut impl Iterator<Item = Token>) -> DeviceConfig {
+fn is_known_key(s: &str) -> bool {
+    matches!(
+        s,
+        "vendor"
+            | "product"
+            | "dev_loss_tmo"
+            | "no_path_retry"
+            | "defaults"
+            | "devices"
+            | "device"
+            | "path_grouping_policy"
+            | "path_selector"
+            | "path_checker"
+            | "features"
+            | "prio"
+            | "failback"
+            | "rr_weight"
+            | "rr_min_io"
+            | "rr_min_io_rq"
+            | "fast_io_fail_tmo"
+            | "polling_interval"
+    )
+}
+
+fn parse_block(iter: &mut std::iter::Peekable<impl Iterator<Item = Token>>) -> DeviceConfig {
     let mut block = DeviceConfig::default();
     let mut depth = 1;
     while let Some(token) = iter.next() {
@@ -156,13 +180,35 @@ fn parse_block(iter: &mut impl Iterator<Item = Token>) -> DeviceConfig {
                 }
             }
             Token::Word(key) if depth == 1 => {
-                if let Some(Token::Word(val)) = iter.next() {
-                    match key.as_str() {
-                        "vendor" => block.vendor = Some(val),
-                        "product" => block.product = Some(val),
-                        "dev_loss_tmo" => block.dev_loss_tmo = Some(val),
-                        "no_path_retry" => block.no_path_retry = Some(val),
-                        _ => {}
+                let has_val = if let Some(next_token) = iter.peek() {
+                    match next_token {
+                        Token::Word(val) => {
+                            if is_known_key(val) {
+                                warn!("Key '{}' has no value, next token is a known key '{}'", key, val);
+                                false
+                            } else {
+                                true
+                            }
+                        }
+                        Token::OpenBrace | Token::CloseBrace => {
+                            warn!("Key '{}' has no value, next token is brace", key);
+                            false
+                        }
+                    }
+                } else {
+                    warn!("Key '{}' has no value at end of config", key);
+                    false
+                };
+
+                if has_val {
+                    if let Some(Token::Word(val)) = iter.next() {
+                        match key.as_str() {
+                            "vendor" => block.vendor = Some(val),
+                            "product" => block.product = Some(val),
+                            "dev_loss_tmo" => block.dev_loss_tmo = Some(val),
+                            "no_path_retry" => block.no_path_retry = Some(val),
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -177,13 +223,23 @@ pub fn get_merged_config(config: &MultipathConfig, vendor: &str, product: &str) 
 
     for device in &config.devices {
         let vendor_match = match &device.vendor {
-            Some(v) => Regex::new(v).map(|re| re.is_match(vendor)).unwrap_or(false),
+            Some(v) => match Regex::new(v) {
+                Ok(re) => re.is_match(vendor),
+                Err(e) => {
+                    warn!("Invalid vendor regex '{}' in devices config: {}", v, e);
+                    false
+                }
+            },
             None => true, // If not specified, matches any
         };
         let product_match = match &device.product {
-            Some(p) => Regex::new(p)
-                .map(|re| re.is_match(product))
-                .unwrap_or(false),
+            Some(p) => match Regex::new(p) {
+                Ok(re) => re.is_match(product),
+                Err(e) => {
+                    warn!("Invalid product regex '{}' in devices config: {}", p, e);
+                    false
+                }
+            },
             None => true,
         };
 
@@ -299,5 +355,58 @@ defaults {
         let config = parse_multipath_config(config_str);
         assert_eq!(config.defaults.dev_loss_tmo.as_deref(), Some("infinity"));
         assert_eq!(config.defaults.no_path_retry.as_deref(), Some("queue"));
+    }
+
+    #[test]
+    fn test_parse_multipath_config_bug1_and_bug3() {
+        // Bug 1: nested block at depth 1, e.g. device with nested some_block.
+        // If some_block causes premature exits, product won't be parsed.
+        let config_str = r#"
+devices {
+    device {
+        vendor "HUAWEI"
+        some_block {
+            foo bar
+        }
+        product "XSG1"
+        dev_loss_tmo 30
+    }
+}
+"#;
+        let config = parse_multipath_config(config_str);
+        assert_eq!(config.devices.len(), 1);
+        assert_eq!(config.devices[0].vendor.as_deref(), Some("HUAWEI"));
+        assert_eq!(config.devices[0].product.as_deref(), Some("XSG1"));
+        assert_eq!(config.devices[0].dev_loss_tmo.as_deref(), Some("30"));
+
+        // Bug 3: key with missing value followed by another key.
+        let config_str_bug3 = r#"
+defaults {
+    vendor
+    dev_loss_tmo "infinity"
+    no_path_retry "queue"
+}
+"#;
+        let config_bug3 = parse_multipath_config(config_str_bug3);
+        assert_eq!(config_bug3.defaults.vendor, None);
+        assert_eq!(config_bug3.defaults.dev_loss_tmo.as_deref(), Some("infinity"));
+        assert_eq!(config_bug3.defaults.no_path_retry.as_deref(), Some("queue"));
+    }
+
+    #[test]
+    fn test_regex_compilation_warning() {
+        let config_str = r#"
+devices {
+    device {
+        vendor "["
+        product "XSG1"
+        dev_loss_tmo 30
+    }
+}
+"#;
+        let parsed = parse_multipath_config(config_str);
+        let merged = get_merged_config(&parsed, "HUAWEI", "XSG1");
+        // Should not crash, and should fallback (vendor match fails because Regex "[ " is invalid)
+        assert_ne!(merged.dev_loss_tmo.as_deref(), Some("30"));
     }
 }
