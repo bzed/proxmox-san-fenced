@@ -52,11 +52,8 @@ impl StatusTracker {
 
     /// Set the destination path for the status file.
     pub fn set_status_file(&self, path: Option<String>) {
-        {
-            let mut guard = self.status_file.write().unwrap();
-            *guard = path;
-        }
-        self.write_status_file();
+        let mut guard = self.status_file.write().unwrap();
+        *guard = path;
     }
 
     /// Retrieve the currently configured status file path.
@@ -188,6 +185,7 @@ mod tests {
         };
 
         tracker.set_status_file(Some(status_file_path.to_str().unwrap().to_string()));
+        tracker.touch();
 
         // Initial state should be OK
         wait_for_content(&status_file_path, "OK - Daemon is running normally\n");

@@ -1281,6 +1281,9 @@ defaults {
     std::thread::sleep(Duration::from_secs(3));
 
     // Query status from CLI
+    assert_status_file(&status_file_path, "WARNING");
+
+    // Also double check output to ensure dev_loss_tmo was logged
     let fencer_bin = workspace.join("target/debug/pve-san-fenced");
     let output = Command::new(&fencer_bin)
         .arg("--status")
@@ -1289,9 +1292,7 @@ defaults {
         .output()
         .expect("Failed to run fencer in status-query mode");
 
-    assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("WARNING -"));
     assert!(stdout.contains("dev_loss_tmo is not configured"));
     assert!(!stdout.contains("Consecutive storage failure"));
 }

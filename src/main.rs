@@ -227,7 +227,7 @@ fn validate_sysrq(sysrq_chars: &str) -> Result<(), String> {
 
 fn exit_with_flush(code: i32) -> ! {
     // Wait briefly to allow the status file write thread to write status file
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     std::process::exit(code);
 }
 
@@ -346,6 +346,9 @@ async fn main() {
         );
         exit_with_flush(1);
     }
+
+    // Validations passed, write initial OK status
+    pve_san_fenced::status::get_status_tracker().touch();
 
     let discovery_interval = cli.discovery_interval;
     let discovery_interval_duration = Duration::from_secs(discovery_interval);
