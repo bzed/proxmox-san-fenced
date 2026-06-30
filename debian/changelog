@@ -1,3 +1,13 @@
+pve-san-fenced (0.1.6) unstable; urgency=medium
+
+  * [c3c07a5] Add integration test for warning status preservation and updates
+  * [165beb5] Add status warning no-failures test and adjust query wait intervals
+  * [34b7c8d] Touch the status file on every poll cycle to prevent false positives
+  * [dd2fb6a] Update active_luns timestamp unconditionally on successful discovery
+  * [d9161ba] Add integration test to prevent stale active LUN data regressions
+
+ -- Bernd Zeimetz <bzed@debian.org>  Tue, 30 Jun 2026 10:06:50 +0200
+
 pve-san-fenced (0.1.5) unstable; urgency=medium
 
   * [f849add] Document recommended multipath settings in README.md
