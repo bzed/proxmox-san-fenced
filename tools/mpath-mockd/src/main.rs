@@ -103,6 +103,7 @@ fn command_to_subdir(command: &str) -> &str {
         "list maps" => "list_maps",
         "show status" => "show_status",
         "show config" => "show_config",
+        "show config local" => "show_config_local",
         _ => "",
     }
 }
@@ -115,6 +116,7 @@ fn default_filename_for_command(command: &str) -> &str {
         "list maps" => "list_maps.txt",
         "show status" => "show_status.txt",
         "show config" => "show_config.txt",
+        "show config local" => "ok.txt",
         _ => "",
     }
 }
@@ -146,6 +148,7 @@ fn main() {
         "list maps",
         "show status",
         "show config",
+        "show config local",
     ];
 
     let mut command_responses: HashMap<String, Vec<String>> = HashMap::new();
