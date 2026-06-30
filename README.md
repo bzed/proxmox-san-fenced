@@ -45,8 +45,7 @@ defaults {
 - **`polling_interval 5`**: Aligns multipath daemon's path checking interval with the fencing daemon's poll interval.
 - **`fast_io_fail_tmo 5`**: Promotes fast I/O failure detection.
 
-The `pve-san-fenced` daemon automatically inspects these settings on startup and logs warnings if they do not match the recommended values.
-
+The `pve-san-fenced` daemon automatically and continuously inspects these settings for actively used multipath devices and reports warnings in its status output if they do not match the recommended values.
 ## Installation & Configuration
 
 ### Debian Package Build

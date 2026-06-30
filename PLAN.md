@@ -873,6 +873,12 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
      - If **any** path group is alive and reports a `state` other than `"offline"` or `"failed"` (e.g., `"active"`, `"enabled"`), set `all_paths_dead = false` and break the loop for that map.
      - Track map states (dead vs. alive) across monitoring cycles. If a monitored map's state transitions, log this change at `info` level.
      - Debug log all states (fencer consecutive failures, active set, fencer cycle status, path states) and raw configs returned by `multipathd` at `debug` level.
+   - **Configuration Validation**:
+     - If there are actively used maps, call `libmultipath::send_multipath_command_to_socket(&config.socket, "show config local")` to retrieve the current multipath configuration without defaults.
+     - Parse the active maps to determine their `vendor` and `product` information.
+     - Match each map's `vendor` and `product` against the regex patterns found in the `devices` sections of the configuration.
+     - Determine the `dev_loss_tmo` and `no_path_retry` settings for each active map, accounting for overrides.
+     - Track a WARNING status issue for any map whose `dev_loss_tmo` is not "infinity" or `no_path_retry` is not "queue".
    - **Threshold Evaluation**:
      - If `all_paths_dead == true` (meaning all *actively used* LUNs have lost all paths), increment the consecutive failure counter.
      - Log a warning: `"Consecutive storage failure {count}/{MAX_FAILURES}"`.
@@ -893,9 +899,10 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
             5. If the sequence does not include or trigger a reboot via `'b'`, attempt to write `"b"` as a fallback to ensure the node reboots.
 
 3. **Status Reporting (Nagios Compatible)**:
-   - Provide a mechanism to output the current daemon status in a Nagios-compatible format. This can be implemented by periodically writing to a status file (e.g., `/run/pve-san-fenced/status`), offering a query socket, or similar low-overhead methods.
+   - Provide a mechanism to output the current daemon status in a Nagios-compatible format. This is implemented by maintaining a `StatusTracker` that aggregates active status issues and periodically writes them to a status file (e.g., `/run/pve-san-fenced/status`).
+   - To prevent intermittent read failures by external Nagios checks (such as the daemon's `--status` mode), the status file is written **atomically** (written to a temporary file and renamed).
    - **CRITICAL**: Set status to CRITICAL in case of a non-transient FC issue, especially when the fencing/rebooting operation failed or when the daemon is operating in dry-run mode (where rebooting is skipped but a critical failure occurred).
-   - **WARNING**: Set status to WARNING whenever the daemon runs into an issue that triggers a `warn!()` log. This includes, but is not limited to: stale active LUN data, multipath configuration discrepancies, missing `dm_st` fields, SysRq configuration/state read problems, transient multipathd query failures, or discovery thread backoffs.
+   - **WARNING**: Set status to WARNING whenever the daemon runs into an issue that triggers a `warn!()` log. This includes, but is not limited to: stale active LUN data, multipath configuration discrepancies (such as `dev_loss_tmo` or `no_path_retry` violating recommendations for actively used maps), missing `dm_st` fields, SysRq configuration/state read problems, transient multipathd query failures, or discovery thread backoffs.
    - **OK**: Return OK if the daemon is happy, there are no configuration issues, and no FC or VM-related problems are currently detected.
    - *Implementation Constraint*: Stability takes precedence over functionality. If implementing this status tracking requires a major rewrite of the existing state management, it should be skipped.
 

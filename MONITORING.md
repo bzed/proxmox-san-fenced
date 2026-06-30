@@ -102,12 +102,12 @@ The status check exits with one of the following standard Nagios/Icinga codes:
 ---
 
 ### 5. WARNING - Multipath configuration recommendation warnings: ...
-* **Meaning**: The daemon successfully queried `multipathd` but detected configuration parameters that do not align with optimal fencing recommendations.
+* **Meaning**: The daemon successfully queried `multipathd` but detected configuration parameters that do not align with optimal fencing recommendations for actively used maps.
 * **Possible Reasons**:
   * `no_path_retry` is not set to `queue`. If set to `fail` or a numeric value, paths fail immediately on transient drops rather than queueing.
   * `dev_loss_tmo` is not set to `infinity`. If set to a numeric value, paths are removed from the system during sustained drops, which can prevent the fencer from detecting the dead LUNs and executing panic/reboots.
 * **Solutions**:
-  1. Edit `/etc/multipath.conf` and update the defaults:
+  1. Edit `/etc/multipath.conf` and update the defaults or device-specific configuration:
      ```text
      defaults {
          no_path_retry "queue"
@@ -118,7 +118,7 @@ The status check exits with one of the following standard Nagios/Icinga codes:
      ```bash
      systemctl reload multipath-tools
      ```
-  3. Restart `pve-san-fenced` to clear the warning.
+  3. The warning will clear automatically on the next daemon polling cycle once the settings are corrected in `multipathd`.
 
 ---
 
