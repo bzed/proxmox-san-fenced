@@ -1,3 +1,23 @@
+pve-san-fenced (0.1.8) unstable; urgency=medium
+
+  * [cfa6cac] Rework multipath configuration parsing to use show config local
+  * [f8a5865] Fix mpath-mockd not responding to show config local
+  * [c375db4] Complete refactor of multipath config validation
+  * [fbcfe94] Fix status file racing on startup
+  * [8416244] Add integration tests for multipath config parsing
+  * [63303e7] Update documentation to reflect continuous config checking and status tracking fixes
+  * [a5922f8] Adding list of current bugs
+  * [73a5cc7] Fix status file sync issue in dry-run mode (Bug 6, Bug 4)
+  * [da6bd9f] Fix hostname fallback (Bug 7) and validate status_file path on startup (Bug 8)
+  * [1a2d31e] Make multipathd response size limit configurable (Bug 9)
+  * [96d57f4] Validate node_name to prevent path traversal (Bug 10)
+  * [db28797] Validate PVE_SAN_TEST_DATA_DIR in production (Bug 11)
+  * [6531fa4] Update BUGS.md to mark all bugs as RESOLVED or WONTFIX
+  * [630c85f] remove fixed bugs
+  * [f30a229] Fix multipath config parsing issues (Bugs 1, 2, 3)
+
+ -- Bernd Zeimetz <bzed@debian.org>  Tue, 30 Jun 2026 16:52:54 +0200
+
 pve-san-fenced (0.1.7) unstable; urgency=medium
 
   * [6592c8e] Create comprehensive guide explaining pve-san-fenced monitoring
