@@ -190,6 +190,8 @@ pub async fn trigger_fencing(sysrq_char: &str) {
 
     if env::var("PVE_SAN_FENCE_DRY_RUN").is_ok() {
         warn!("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon.");
+        // Give the status writing thread a brief moment to write the final CRITICAL state
+        std::thread::sleep(std::time::Duration::from_millis(200));
         std::process::exit(/*code*/ 0);
     }
 

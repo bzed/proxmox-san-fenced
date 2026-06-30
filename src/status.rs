@@ -101,7 +101,7 @@ impl StatusTracker {
     fn write_status_file(&self) {
         let file_path_guard = self.status_file.read().unwrap();
         let file_path = match &*file_path_guard {
-            Some(path) => path,
+            Some(path) => path.clone(),
             None => return,
         };
 
@@ -122,13 +122,17 @@ impl StatusTracker {
                 .collect();
             msgs.sort();
 
-            (max_level, msgs.join("; "))
+            let msgs_owned: Vec<String> = msgs.into_iter().map(|s| s.to_string()).collect();
+            (max_level, msgs_owned.join("; "))
         };
 
-        let content = format!("{level} - {message}\n");
-        if let Err(e) = fs::write(file_path, content) {
-            log::error!("Failed to write status file '{file_path}': {e}");
-        }
+        // Spawn a thread to write the file so it never blocks the caller (especially during storage/IO locks)
+        std::thread::spawn(move || {
+            let content = format!("{level} - {message}\n");
+            if let Err(e) = fs::write(&file_path, content) {
+                log::error!("Failed to write status file '{file_path}': {e}");
+            }
+        });
     }
 }
 
@@ -144,6 +148,7 @@ mod tests {
     use super::*;
     use std::env;
     use std::fs;
+    use std::time::Duration;
 
     #[test]
     fn test_status_tracker_basic() {
@@ -159,42 +164,49 @@ mod tests {
         fs::create_dir_all(&temp_dir).unwrap();
         let status_file_path = temp_dir.join("pve-san-fenced.status");
 
+        let wait_for_content = |path: &std::path::Path, expected: &str| {
+            let start = std::time::Instant::now();
+            while start.elapsed() < Duration::from_secs(2) {
+                if let Ok(content) = fs::read_to_string(path) {
+                    if content == expected {
+                        return;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let actual = fs::read_to_string(path).unwrap_or_default();
+            assert_eq!(actual, expected);
+        };
+
         tracker.set_status_file(Some(status_file_path.to_str().unwrap().to_string()));
 
         // Initial state should be OK
-        let content = fs::read_to_string(&status_file_path).unwrap();
-        assert_eq!(content, "OK - Daemon is running normally\n");
+        wait_for_content(&status_file_path, "OK - Daemon is running normally\n");
 
         // Set a warning issue
         tracker.set_issue("test_warn", StatusLevel::Warning, "First warning".to_string());
-        let content = fs::read_to_string(&status_file_path).unwrap();
-        assert_eq!(content, "WARNING - First warning\n");
+        wait_for_content(&status_file_path, "WARNING - First warning\n");
 
         // Set another warning issue
         tracker.set_issue("another_warn", StatusLevel::Warning, "Second warning".to_string());
-        let content = fs::read_to_string(&status_file_path).unwrap();
         // Since we sort the messages, it should be "First warning; Second warning"
-        assert_eq!(content, "WARNING - First warning; Second warning\n");
+        wait_for_content(&status_file_path, "WARNING - First warning; Second warning\n");
 
         // Set a critical issue
         tracker.set_issue("critical_fail", StatusLevel::Critical, "Critical error occurred".to_string());
-        let content = fs::read_to_string(&status_file_path).unwrap();
-        assert_eq!(content, "CRITICAL - Critical error occurred\n");
+        wait_for_content(&status_file_path, "CRITICAL - Critical error occurred\n");
 
         // Clear critical issue, should go back to WARNING
         tracker.clear_issue("critical_fail");
-        let content = fs::read_to_string(&status_file_path).unwrap();
-        assert_eq!(content, "WARNING - First warning; Second warning\n");
+        wait_for_content(&status_file_path, "WARNING - First warning; Second warning\n");
 
         // Clear prefix warnings
         tracker.clear_issues_with_prefix("test_");
-        let content = fs::read_to_string(&status_file_path).unwrap();
-        assert_eq!(content, "WARNING - Second warning\n");
+        wait_for_content(&status_file_path, "WARNING - Second warning\n");
 
         // Clear remaining
         tracker.clear_issue("another_warn");
-        let content = fs::read_to_string(&status_file_path).unwrap();
-        assert_eq!(content, "OK - Daemon is running normally\n");
+        wait_for_content(&status_file_path, "OK - Daemon is running normally\n");
 
         // Clean up
         fs::remove_dir_all(&temp_dir).ok();

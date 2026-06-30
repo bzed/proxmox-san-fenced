@@ -106,6 +106,25 @@ defaults {
     std::thread::sleep(Duration::from_millis(200));
 }
 
+/// Helper to poll and assert the content of the status file
+fn assert_status_file(status_file_path: &std::path::Path, expected_prefix: &str) {
+    let start = std::time::Instant::now();
+    let mut last_content = String::new();
+    while start.elapsed() < Duration::from_secs(3) {
+        if let Ok(content) = fs::read_to_string(status_file_path) {
+            last_content = content.clone();
+            if content.starts_with(expected_prefix) {
+                return;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!(
+        "Expected status file to start with '{}', but got: '{}'",
+        expected_prefix, last_content
+    );
+}
+
 /// Helper to start the pve-san-fenced daemon
 fn start_fencer(ctx: &mut TestContext, node_name: &str, extra_args: &[&str]) {
     let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -128,6 +147,13 @@ fn start_fencer(ctx: &mut TestContext, node_name: &str, extra_args: &[&str]) {
         .arg("10")
         .arg("--max-failures")
         .arg("3");
+
+    // Always ensure we have a status file inside temp_dir if not overridden
+    let has_status_file = extra_args.iter().any(|arg| arg.starts_with("--status-file"));
+    let status_path = ctx.temp_dir.join("pve-san-fenced.status");
+    if !has_status_file {
+        cmd.arg("--status-file").arg(&status_path);
+    }
 
     for arg in extra_args {
         cmd.arg(arg);
@@ -185,6 +211,9 @@ fn test_integration_stable_healthy_paths() {
     assert!(full_logs.contains("Starting PVE SAN fencing daemon on node: pve001"));
     assert!(!full_logs.contains("Consecutive storage failure"));
     assert!(!full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
+
+    // Verify status file is OK
+    assert_status_file(&ctx.temp_dir.join("pve-san-fenced.status"), "OK");
 }
 
 #[test]
@@ -257,6 +286,9 @@ fn test_integration_sustained_failure_fencing() {
     assert!(full_logs.contains("Consecutive storage failure: 3/3"));
     assert!(full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
     assert!(full_logs.contains("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon."));
+
+    // Verify status file is CRITICAL
+    assert_status_file(&ctx.temp_dir.join("pve-san-fenced.status"), "CRITICAL");
 }
 
 #[test]
@@ -305,6 +337,9 @@ fn test_integration_transient_failure_recovery() {
     assert!(!full_logs.contains("Consecutive storage failure: 2/3"));
     assert!(!full_logs.contains("Consecutive storage failure: 3/3"));
     assert!(!full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
+
+    // Verify status file is OK
+    assert_status_file(&ctx.temp_dir.join("pve-san-fenced.status"), "OK");
 }
 
 #[test]
@@ -359,6 +394,9 @@ fn test_integration_ghost_paths_fencing() {
     assert!(full_logs.contains("Consecutive storage failure: 3/3"));
     assert!(full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
     assert!(full_logs.contains("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon."));
+
+    // Verify status file is CRITICAL
+    assert_status_file(&ctx.temp_dir.join("pve-san-fenced.status"), "CRITICAL");
 }
 
 #[test]
@@ -394,6 +432,9 @@ fn test_integration_some_undef_some_active_stable() {
     let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
     assert!(!full_logs.contains("Consecutive storage failure"));
     assert!(!full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
+
+    // Verify status file is OK
+    assert_status_file(&ctx.temp_dir.join("pve-san-fenced.status"), "OK");
 }
 
 #[test]
@@ -429,6 +470,9 @@ fn test_integration_disabled_pg_active_path_stable() {
     let full_logs = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
     assert!(!full_logs.contains("Consecutive storage failure"));
     assert!(!full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
+
+    // Verify status file is OK
+    assert_status_file(&ctx.temp_dir.join("pve-san-fenced.status"), "OK");
 }
 
 #[test]
@@ -474,6 +518,9 @@ fn test_integration_invalid_sysrq_chars() {
         ),
         "Logs did not contain expected error: {full_logs}"
     );
+
+    // Verify status file is CRITICAL due to startup configuration failure
+    assert_status_file(&ctx.temp_dir.join("pve-san-fenced.status"), "CRITICAL");
 }
 
 #[test]
@@ -490,6 +537,7 @@ fn test_integration_debug_log_mode() {
     let test_data_dir = workspace.join("test-data/pvesh");
     let nodes_dir = ctx.temp_dir.join("nodes");
 
+    let status_path = ctx.temp_dir.join("pve-san-fenced.status");
     let mut cmd = Command::new(fencer_bin);
     cmd.arg("--node-name")
         .arg("pve001")
@@ -503,6 +551,8 @@ fn test_integration_debug_log_mode() {
         .arg("1")
         .arg("--max-failures")
         .arg("3")
+        .arg("--status-file")
+        .arg(&status_path)
         .env("PVE_SAN_TEST_DATA_DIR", test_data_dir)
         .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
         .env("PVE_SAN_FENCE_DRY_RUN", "1")
@@ -531,6 +581,9 @@ fn test_integration_debug_log_mode() {
         logs.contains("Discovered VM:") && logs.contains("state:"),
         "Logs did not contain the debug discovery output:\n{logs}"
     );
+
+    // Verify status file is OK
+    assert_status_file(&status_path, "OK");
 }
 
 #[test]
@@ -561,6 +614,7 @@ fn test_integration_hanging_multipathd() {
     let pvesh_test_data = workspace.join("test-data/pvesh");
     let nodes_dir = ctx.temp_dir.join("nodes");
 
+    let status_path = ctx.temp_dir.join("pve-san-fenced.status");
     let mut cmd = Command::new(fencer_bin);
     cmd.arg("--node-name")
         .arg("pve001")
@@ -574,6 +628,8 @@ fn test_integration_hanging_multipathd() {
         .arg("10")
         .arg("--max-failures")
         .arg("3")
+        .arg("--status-file")
+        .arg(&status_path)
         .env("PVE_SAN_TEST_DATA_DIR", pvesh_test_data)
         .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
         .env("PVE_SAN_FENCE_DRY_RUN", "1")
@@ -610,6 +666,9 @@ fn test_integration_hanging_multipathd() {
         !full_logs.contains("TEST MODE: Fencing decision reached"),
         "Fencing should NOT have been triggered during daemon query timeouts:\n{full_logs}"
     );
+
+    // Verify status file is WARNING due to hanging multipathd query
+    assert_status_file(&status_path, "WARNING");
 }
 
 #[test]
@@ -638,6 +697,7 @@ fn test_integration_unresponsive_multipathd_connection_timeout() {
     let pvesh_test_data = workspace.join("test-data/pvesh");
     let nodes_dir = ctx.temp_dir.join("nodes");
 
+    let status_path = ctx.temp_dir.join("pve-san-fenced.status");
     let mut cmd = Command::new(fencer_bin);
     cmd.arg("--node-name")
         .arg("pve001")
@@ -651,6 +711,8 @@ fn test_integration_unresponsive_multipathd_connection_timeout() {
         .arg("10")
         .arg("--max-failures")
         .arg("3")
+        .arg("--status-file")
+        .arg(&status_path)
         .env("PVE_SAN_TEST_DATA_DIR", pvesh_test_data)
         .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
         .env("PVE_SAN_FENCE_DRY_RUN", "1")
@@ -691,6 +753,9 @@ fn test_integration_unresponsive_multipathd_connection_timeout() {
         !full_logs.contains("SAN FENCER: Total persistent storage loss detected"),
         "Fencing should NOT have been triggered during connection timeouts:\n{full_logs}"
     );
+
+    // Verify status file is WARNING due to unresponsive multipathd connection timeout
+    assert_status_file(&status_path, "WARNING");
 }
 
 #[test]
@@ -750,6 +815,9 @@ fn test_integration_partial_failure_fencing() {
     assert!(full_logs.contains("Consecutive storage failure: 3/3"));
     assert!(full_logs.contains("SAN FENCER: Total persistent storage loss detected"));
     assert!(full_logs.contains("SAN FENCER: DRY RUN: Fencing triggered. Exiting daemon."));
+
+    // Verify status file is CRITICAL
+    assert_status_file(&ctx.temp_dir.join("pve-san-fenced.status"), "CRITICAL");
 }
 
     // Test that discovery backoff works correctly when discovery encounters errors
@@ -788,6 +856,7 @@ fn test_integration_discovery_backoff() {
     let fencer_bin = workspace.join("target/debug/pve-san-fenced");
     let nodes_dir = ctx.temp_dir.join("nodes");
 
+    let status_path = ctx.temp_dir.join("pve-san-fenced.status");
     let mut cmd = Command::new(&fencer_bin);
     cmd.arg("--node-name")
         .arg("pve001")
@@ -807,6 +876,8 @@ fn test_integration_discovery_backoff() {
         .arg("1")
         .arg("--discovery-backoff-max")
         .arg("3")
+        .arg("--status-file")
+        .arg(&status_path)
         .env("PVE_SAN_TEST_DATA_DIR", ctx.temp_dir.clone())  // Point to temp dir with fake file
         .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
         .env("PVE_SAN_FENCE_DRY_RUN", "1")
@@ -852,6 +923,9 @@ fn test_integration_discovery_backoff() {
         !full_logs.contains("SAN FENCER: Total persistent storage loss detected"),
         "Fencing should NOT have been triggered during discovery failures:\n{full_logs}"
     );
+
+    // Verify status file is WARNING due to discovery failure backoffs
+    assert_status_file(&status_path, "WARNING");
 }
 
 #[test]

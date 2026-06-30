@@ -447,6 +447,12 @@ fn validate_sysrq(sysrq_chars: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn exit_with_flush(code: i32) -> ! {
+    // Wait briefly to allow the status file write thread to write status file
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    std::process::exit(code);
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     // Set default log level to info if not set
@@ -513,7 +519,7 @@ async fn main() {
             pve_san_fenced::status::StatusLevel::Critical,
             msg,
         );
-        std::process::exit(1);
+        exit_with_flush(1);
     }
     if cli.max_failures == 0 {
         let msg = "max-failures cannot be 0".to_string();
@@ -523,7 +529,7 @@ async fn main() {
             pve_san_fenced::status::StatusLevel::Critical,
             msg,
         );
-        std::process::exit(1);
+        exit_with_flush(1);
     }
     if cli.discovery_interval == 0 {
         let msg = "discovery-interval cannot be 0".to_string();
@@ -533,7 +539,7 @@ async fn main() {
             pve_san_fenced::status::StatusLevel::Critical,
             msg,
         );
-        std::process::exit(1);
+        exit_with_flush(1);
     }
     let base_dir =
         std::env::var("PVE_SAN_SYS_NODES_DIR").unwrap_or_else(|_| "/etc/pve/nodes".to_string());
@@ -547,7 +553,7 @@ async fn main() {
             pve_san_fenced::status::StatusLevel::Critical,
             msg,
         );
-        std::process::exit(1);
+        exit_with_flush(1);
     }
     let node = &cli.node_name;
     info!("Starting PVE SAN fencing daemon on node: {node}");
@@ -587,7 +593,7 @@ async fn main() {
             pve_san_fenced::status::StatusLevel::Critical,
             msg,
         );
-        std::process::exit(1);
+        exit_with_flush(1);
     }
 
     let discovery_interval = cli.discovery_interval;
