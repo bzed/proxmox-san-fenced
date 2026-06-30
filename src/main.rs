@@ -314,6 +314,20 @@ async fn main() {
     // Set the status file immediately so that errors/warnings are reported
     pve_san_fenced::status::get_status_tracker().set_status_file(Some(cli.status_file.clone()));
 
+    if std::env::var("PVE_SAN_TEST_DATA_DIR").is_ok()
+        && !cli.test_mode
+        && std::env::var("PVE_SAN_FENCE_DRY_RUN").is_err()
+    {
+        let msg = "PVE_SAN_TEST_DATA_DIR is set but daemon is not running in test/dry-run mode".to_string();
+        error!("{msg}");
+        pve_san_fenced::status::get_status_tracker().set_issue(
+            "config_error",
+            pve_san_fenced::status::StatusLevel::Critical,
+            msg,
+        );
+        exit_with_flush(1);
+    }
+
     if cli.poll_interval == 0 {
         let msg = "poll-interval cannot be 0".to_string();
         error!("{msg}");
