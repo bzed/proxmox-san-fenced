@@ -61,6 +61,7 @@ The status check exits with one of the following standard Nagios/Icinga codes:
   * The VM/storage discovery thread is encountering errors querying the Proxmox VE API/config.
   * The cluster configuration filesystem (`/etc/pve`) is locked or slow.
   * `pvesh` commands are timing out due to cluster communication lags.
+  * `multipathd` is unresponsive or slow when queried for mapping information (`show maps json`).
 * **Solutions**:
   1. Check the daemon log for VM discovery errors:
      ```bash
@@ -73,6 +74,10 @@ The status check exits with one of the following standard Nagios/Icinga codes:
   3. Verify that the Proxmox VE cluster API is responsive:
      ```bash
      pvesh get /nodes/localhost/qemu --output-format json
+     ```
+  4. Verify that `multipathd` is responsive to socket queries:
+     ```bash
+     multipathd show maps json
      ```
 
 ---
