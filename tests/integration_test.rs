@@ -1256,3 +1256,52 @@ defaults {
     assert!(stdout.contains("dev_loss_tmo is not configured"));
     assert!(!stdout.contains("Consecutive storage failure"));
 }
+
+#[test]
+fn test_integration_discovery_timestamp_no_stale() {
+    let mut ctx = TestContext::new("discovery_timestamp_no_stale", "pve001");
+    let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
+
+    // Start mock daemon with healthy maps only
+    start_mockd(&mut ctx, "show maps json=all_active_running.json");
+
+    // Start fencer daemon manually with customized intervals
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let pvesh_mock_bin = workspace.join("target/debug/pvesh-mock");
+    let test_data_dir = workspace.join("test-data/pvesh");
+    let nodes_dir = ctx.temp_dir.join("nodes");
+
+    let mut cmd = Command::new(fencer_bin);
+    cmd.arg("--node-name")
+        .arg("pve001")
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--pvesh-command")
+        .arg(pvesh_mock_bin)
+        .arg("--poll-interval")
+        .arg("1")
+        .arg("--discovery-interval")
+        .arg("2")
+        .arg("--max-failures")
+        .arg("3")
+        .arg("--status-file")
+        .arg(&status_file_path);
+
+    cmd.env("PVE_SAN_TEST_DATA_DIR", test_data_dir)
+        .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
+        .env("PVE_SAN_FENCE_DRY_RUN", "1")
+        .env("RUST_LOG", "debug")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let child = cmd.spawn().expect("Failed to start pve-san-fenced");
+    ctx.target_daemon = Some(child);
+
+    // Wait for at least 3 discovery cycles (each cycle is 2s discovery_interval + execution time, so 6 seconds total)
+    // where active LUNs list remains identical (healthy throughout)
+    std::thread::sleep(Duration::from_secs(6));
+
+    // Verify status file is still OK (not WARNING/stale)
+    assert_status_file(&status_file_path, "OK");
+}
