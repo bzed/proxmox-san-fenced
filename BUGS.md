@@ -11,7 +11,7 @@ Each entry includes the file, line, description, severity, and resolution status
 
 **File**: `src/config.rs:146-173`
 **Severity**: HIGH
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: The `parse_block` function processes tokens within a brace-delimited block. At line 158, it only processes `Token::Word(key)` when `depth == 1`. When it encounters such a key, it attempts to read the next token as a value: `if let Some(Token::Word(val)) = iter.next()` (line 159).
 
@@ -27,7 +27,7 @@ If the next token is NOT a `Word` (e.g., it is an `OpenBrace` for a nested block
 
 **File**: `src/config.rs:175-199`
 **Severity**: HIGH
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: In `get_merged_config`, lines 180 and 184-185 compile regex patterns from the `vendor` and `product` fields using `Regex::new(v).map(|re| re.is_match(vendor)).unwrap_or(false)`. If the regex pattern is invalid, `Regex::new(v)` returns an error, and `unwrap_or(false)` silently treats it as a non-match. This means an administrator could configure an invalid regex pattern, the pattern would silently fail to match, and the daemon would fall back to default configuration instead of the intended device-specific settings, with no warning or error logged.
 
@@ -41,7 +41,7 @@ If the next token is NOT a `Word` (e.g., it is an `OpenBrace` for a nested block
 
 **File**: `src/config.rs:146-173`
 **Severity**: HIGH
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: When parsing a config like `defaults { vendor\n dev_loss_tmo "infinity" }`, the tokenizer produces: `[Word("vendor"), Word("dev_loss_tmo"), Word("infinity")]`. When `parse_block` processes `vendor` at line 158-159, it calls `iter.next()` which returns `Word("dev_loss_tmo")`. Since this IS a Word, it is treated as the value for `vendor`, resulting in `vendor = Some("dev_loss_tmo")`. The actual `dev_loss_tmo` key is then skipped entirely when the iterator advances.
 
@@ -55,7 +55,7 @@ If the next token is NOT a `Word` (e.g., it is an `OpenBrace` for a nested block
 
 **File**: `src/lib.rs:161-210`
 **Severity**: MEDIUM
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: In `is_map_dead`, when a path's `dm_st` field is `None` (line 189), the code logs a warning and sets `active_path_found = true` (line 197). This means a path with a missing `dm_st` field is treated as ALIVE (healthy). This conservative approach prevents false fencing, but it means we might NOT fence when we should if multipathd omits the `dm_st` field for genuinely failed paths.
 
@@ -83,7 +83,7 @@ If the next token is NOT a `Word` (e.g., it is an `OpenBrace` for a nested block
 
 **File**: `src/lib.rs:216-224`
 **Severity**: MEDIUM
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: In `trigger_fencing`, when `PVE_SAN_FENCE_DRY_RUN` is set (line 219), the function logs a warning and sleeps for 200ms before exiting (lines 220-223). The sleep is intended to allow the status writing thread time to write the final CRITICAL state. However, the status file writing happens in a spawned thread with no synchronization. There is no guarantee that 200ms is sufficient, especially on slow systems or under heavy load.
 
@@ -97,7 +97,7 @@ If the next token is NOT a `Word` (e.g., it is an `OpenBrace` for a nested block
 
 **File**: `src/main.rs:47-51`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: The function reads `/proc/sys/kernel/hostname`, trims it, and returns it. If the read fails, it returns "localhost". However, if the hostname file is empty or contains only whitespace, the trim would result in an empty string, which is then returned. An empty node name would cause the node directory check at lines 325-334 to fail.
 
@@ -111,7 +111,7 @@ If the next token is NOT a `Word` (e.g., it is an `OpenBrace` for a nested block
 
 **File**: `src/main.rs:106-116` and `src/status.rs:54-62`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: The `status_file` CLI argument accepts any string path without validation. A user could specify a relative path, a path outside `/run` or `/var/run`, or even a path that could overwrite system files. The daemon will attempt to write to whatever path is specified.
 
@@ -125,7 +125,7 @@ If the next token is NOT a `Word` (e.g., it is an `OpenBrace` for a nested block
 
 **File**: `src/lib.rs:29-51`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: In `parse_multipathd_response`, there is a hardcoded size limit of 10MB (line 30). If the multipathd response exceeds this, it is rejected with a warning. While this protects against memory exhaustion, 10MB might be too low for systems with thousands of multipath devices.
 
@@ -139,7 +139,7 @@ If the next token is NOT a `Word` (e.g., it is an `OpenBrace` for a nested block
 
 **File**: `src/main.rs:80-87`
 **Severity**: LOW
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: The `node_name` CLI argument accepts any string. This value is used to construct the node directory path at line 324. If the node name contains path traversal characters like `..` or `/`, it could cause the daemon to read from or operate on unintended directories.
 
@@ -153,7 +153,7 @@ If the next token is NOT a `Word` (e.g., it is an `OpenBrace` for a nested block
 
 **File**: `libpve-san/src/lib.rs` (and elsewhere)
 **Severity**: LOW
-**Status**: OPEN
+**Status**: RESOLVED
 
 **Description**: The `PVE_SAN_TEST_DATA_DIR` environment variable is used by `libpve-san` to override the path to test data files. If this variable is set in production (accidentally or maliciously), the daemon would read mock data instead of real system information from `/etc/pve/` and `/sys/`.
 
@@ -218,11 +218,11 @@ The following issues from previous reviews have been resolved in commits since 7
 ## Summary
 
 **Critical Issues**: 0
-**High Severity**: 3 (config parsing issues, regex compilation silent failure)
-**Medium Severity**: 3 (is_map_dead behavior, status file synchronization issues)
-**Low Severity**: 7 (input validation, edge cases)
+**High Severity**: 0 (resolved)
+**Medium Severity**: 0 (resolved or wontfix)
+**Low Severity**: 0 (resolved or wontfix)
 
-**Total Open Issues**: 13
+**Total Open Issues**: 0
 
 **Recommendation**: Prioritize fixing the high and medium severity issues:
 1. **Config parsing robustness** (bugs 1, 2, 3) - These can cause silent misconfiguration
