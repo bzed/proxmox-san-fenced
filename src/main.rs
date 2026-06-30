@@ -717,6 +717,9 @@ async fn main() {
     loop {
         interval.tick().await;
 
+        // Keep the status file fresh on every cycle
+        pve_san_fenced::status::get_status_tracker().touch();
+
         let cf = fencer.consecutive_failures();
         let mf = fencer.max_failures();
         debug!("Fencer monitoring state: consecutive_failures={cf}, max_failures={mf}");

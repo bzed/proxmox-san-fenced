@@ -97,6 +97,11 @@ impl StatusTracker {
         }
     }
 
+    /// Touch the status file, forcing a rewrite to update its modification time.
+    pub fn touch(&self) {
+        self.write_status_file();
+    }
+
     /// Write the aggregated status line to the status file.
     fn write_status_file(&self) {
         let file_path_guard = self.status_file.read().unwrap();
