@@ -106,22 +106,45 @@ defaults {
     std::thread::sleep(Duration::from_millis(200));
 }
 
-/// Helper to poll and assert the content of the status file
+/// Helper to poll and assert the content of the status file via daemon CLI status-query
 fn assert_status_file(status_file_path: &std::path::Path, expected_prefix: &str) {
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+
+    let expected_code = match expected_prefix {
+        "OK" => 0,
+        "WARNING" => 1,
+        "CRITICAL" => 2,
+        _ => 3,
+    };
+
     let start = std::time::Instant::now();
-    let mut last_content = String::new();
+    let mut last_code = None;
+    let mut last_stdout = String::new();
+
     while start.elapsed() < Duration::from_secs(3) {
-        if let Ok(content) = fs::read_to_string(status_file_path) {
-            last_content = content.clone();
-            if content.starts_with(expected_prefix) {
-                return;
-            }
+        let output = Command::new(&fencer_bin)
+            .arg("--status")
+            .arg("--status-file")
+            .arg(status_file_path)
+            .output()
+            .expect("Failed to run fencer in status-query mode");
+
+        let code = output.status.code();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        last_code = code;
+        last_stdout = stdout.clone();
+
+        if code == Some(expected_code) && stdout.starts_with(expected_prefix) {
+            return;
         }
         std::thread::sleep(Duration::from_millis(50));
     }
+
     panic!(
-        "Expected status file to start with '{}', but got: '{}'",
-        expected_prefix, last_content
+        "Expected status-query to return exit code {:?}, starts_with '{}', but got code {:?}, stdout: '{}'",
+        expected_code, expected_prefix, last_code, last_stdout
     );
 }
 
