@@ -46,7 +46,14 @@ impl ActiveLunsWithTimestamp {
 
 fn get_default_node_name() -> String {
     std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .map(|s| s.trim().to_string())
+        .map(|s| {
+            let trimmed = s.trim().to_string();
+            if trimmed.is_empty() {
+                "localhost".to_string()
+            } else {
+                trimmed
+            }
+        })
         .unwrap_or_else(|_| "localhost".to_string())
 }
 
@@ -240,6 +247,24 @@ async fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
+
+    // Validate status file path
+    {
+        let status_path = std::path::Path::new(&cli.status_file);
+        if !status_path.is_absolute() {
+            eprintln!("Error: Status file path must be absolute: {}", cli.status_file);
+            std::process::exit(1);
+        }
+        if let Some(parent) = status_path.parent() {
+            if !parent.is_dir() {
+                eprintln!("Error: Parent directory of status file does not exist: {}", parent.display());
+                std::process::exit(1);
+            }
+        } else {
+            eprintln!("Error: Invalid status file path: {}", cli.status_file);
+            std::process::exit(1);
+        }
+    }
     if cli.status {
         let path = &cli.status_file;
         // Check if file is outdated (modified time exceeds threshold)
