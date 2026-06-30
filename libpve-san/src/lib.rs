@@ -465,11 +465,7 @@ impl PveSanClient {
         }
     }
 
-    fn build_mpath_map(
-        &self,
-        devices: &[LsblkDevice],
-        map: &mut HashMap<String, HashSet<String>>,
-    ) {
+    fn build_mpath_map(&self, devices: &[LsblkDevice], map: &mut HashMap<String, HashSet<String>>) {
         let mut stack = vec![(devices, None)];
 
         while let Some((devs, current_mpath)) = stack.pop() {

@@ -566,7 +566,10 @@ async fn main() {
                 warn!("Multipath configuration recommendation warning: {warning}");
             }
             if !warnings.is_empty() {
-                let msg = format!("Multipath configuration recommendation warnings: {}", warnings.join("; "));
+                let msg = format!(
+                    "Multipath configuration recommendation warnings: {}",
+                    warnings.join("; ")
+                );
                 pve_san_fenced::status::get_status_tracker().set_issue(
                     "config_warnings",
                     pve_san_fenced::status::StatusLevel::Warning,
@@ -723,13 +726,13 @@ async fn main() {
         let cf = fencer.consecutive_failures();
         let mf = fencer.max_failures();
         debug!("Fencer monitoring state: consecutive_failures={cf}, max_failures={mf}");
-        
+
         // Read active LUNs with timestamp
         let active_data = {
             let lock = active_luns.read().await;
             lock.clone()
         };
-        
+
         // Check if the data is too stale to use
         if active_data.is_stale(discovery_interval_duration) {
             let msg = "Active LUN data is stale (older than 2x discovery interval). Skipping fencer update to avoid race condition with discovery thread.".to_string();
@@ -743,7 +746,7 @@ async fn main() {
         } else {
             pve_san_fenced::status::get_status_tracker().clear_issue("stale_luns");
         }
-        
+
         let active_set = active_data.luns;
         debug!("Current active LUNs set: {active_set:?}");
 
@@ -1008,9 +1011,7 @@ defaults {
 }
 "#;
         let warnings = check_multipath_config(brace_in_quote_config);
-        let expected = vec![
-            "no_path_retry is set to 'queue}' instead of 'queue'".to_string(),
-        ];
+        let expected = vec!["no_path_retry is set to 'queue}' instead of 'queue'".to_string()];
         assert_eq!(warnings, expected);
 
         // Test for bug 46: comment character inside quoted string
@@ -1024,9 +1025,7 @@ defaults {
 }
 "#;
         let warnings = check_multipath_config(comment_in_quote_config);
-        let expected = vec![
-            "no_path_retry is set to 'queue#1' instead of 'queue'".to_string(),
-        ];
+        let expected = vec!["no_path_retry is set to 'queue#1' instead of 'queue'".to_string()];
         assert_eq!(warnings, expected);
     }
 }

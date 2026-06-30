@@ -142,8 +142,8 @@ impl MultipathConnection {
         }
         // SAFETY: The caller guarantees fd is valid. We temporarily wrap it in a
         // ManuallyDrop to prevent the stream destructor from closing it, even if a panic occurs.
-        use std::os::fd::FromRawFd;
         use std::mem::ManuallyDrop;
+        use std::os::fd::FromRawFd;
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
         let stream = ManuallyDrop::new(stream);
         Self::send_command_on_stream(&stream, command, timeout_ms)
@@ -161,27 +161,31 @@ impl MultipathConnection {
     fn connect_to_socket(socket_path: &str) -> io::Result<UnixStream> {
         let socket_path_clone = socket_path.to_string();
         let timeout = Duration::from_millis(DEFAULT_CONNECT_TIMEOUT_MS);
-        
+
         let (sender, receiver) = mpsc::channel();
-        
+
         thread::spawn(move || {
-            let result: io::Result<UnixStream> = if let Some(abstract_name) = socket_path_clone.strip_prefix('@') {
-                match SocketAddr::from_abstract_name(abstract_name.as_bytes()) {
-                    Ok(addr) => UnixStream::connect_addr(&addr),
-                    Err(_) => Err(io::Error::new(io::ErrorKind::Other, "Invalid socket address")),
-                }
-            } else {
-                UnixStream::connect(&socket_path_clone)
-            };
+            let result: io::Result<UnixStream> =
+                if let Some(abstract_name) = socket_path_clone.strip_prefix('@') {
+                    match SocketAddr::from_abstract_name(abstract_name.as_bytes()) {
+                        Ok(addr) => UnixStream::connect_addr(&addr),
+                        Err(_) => Err(io::Error::other("Invalid socket address")),
+                    }
+                } else {
+                    UnixStream::connect(&socket_path_clone)
+                };
             sender.send(result).ok();
         });
-        
+
         match receiver.recv_timeout(timeout) {
             Ok(Ok(stream)) => Ok(stream),
             Ok(Err(e)) => Err(e),
             Err(_) => Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                format!("Connection to {} timed out after {}ms", socket_path, DEFAULT_CONNECT_TIMEOUT_MS),
+                format!(
+                    "Connection to {} timed out after {}ms",
+                    socket_path, DEFAULT_CONNECT_TIMEOUT_MS
+                ),
             )),
         }
     }

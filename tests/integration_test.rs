@@ -93,7 +93,10 @@ defaults {
         .arg("--file-map")
         .arg(file_map)
         .arg("--file-map")
-        .arg(format!("show config={}", mock_config_path.to_str().unwrap()))
+        .arg(format!(
+            "show config local={}",
+            mock_config_path.to_str().unwrap()
+        ))
         .arg("--verbose") // Enable verbose logging in the mock daemon
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -172,7 +175,9 @@ fn start_fencer(ctx: &mut TestContext, node_name: &str, extra_args: &[&str]) {
         .arg("3");
 
     // Always ensure we have a status file inside temp_dir if not overridden
-    let has_status_file = extra_args.iter().any(|arg| arg.starts_with("--status-file"));
+    let has_status_file = extra_args
+        .iter()
+        .any(|arg| arg.starts_with("--status-file"));
     let status_path = ctx.temp_dir.join("pve-san-fenced.status");
     if !has_status_file {
         cmd.arg("--status-file").arg(&status_path);
@@ -766,11 +771,11 @@ fn test_integration_unresponsive_multipathd_connection_timeout() {
 
     // Verify that connection timeout errors are logged
     assert!(
-        full_logs.contains("Connection") && full_logs.contains("timed out") ||
-        full_logs.contains("Failed to query multipathd"),
+        full_logs.contains("Connection") && full_logs.contains("timed out")
+            || full_logs.contains("Failed to query multipathd"),
         "Logs did not contain connection timeout error:\n{full_logs}"
     );
-    
+
     // Verify that fencing was NOT triggered (connection errors should not cause fencing)
     assert!(
         !full_logs.contains("SAN FENCER: Total persistent storage loss detected"),
@@ -843,7 +848,7 @@ fn test_integration_partial_failure_fencing() {
     assert_status_file(&ctx.temp_dir.join("pve-san-fenced.status"), "CRITICAL");
 }
 
-    // Test that discovery backoff works correctly when discovery encounters errors
+// Test that discovery backoff works correctly when discovery encounters errors
 #[test]
 fn test_integration_discovery_backoff() {
     let mut ctx = TestContext::new("discovery_backoff", "pve001");
@@ -901,7 +906,7 @@ fn test_integration_discovery_backoff() {
         .arg("3")
         .arg("--status-file")
         .arg(&status_path)
-        .env("PVE_SAN_TEST_DATA_DIR", ctx.temp_dir.clone())  // Point to temp dir with fake file
+        .env("PVE_SAN_TEST_DATA_DIR", ctx.temp_dir.clone()) // Point to temp dir with fake file
         .env("PVE_SAN_SYS_NODES_DIR", nodes_dir)
         .env("PVE_SAN_FENCE_DRY_RUN", "1")
         .env("RUST_LOG", "debug")
@@ -966,10 +971,7 @@ fn test_integration_status_reporting_transitions() {
     start_fencer(
         &mut ctx,
         "pve001",
-        &[
-            "--status-file",
-            status_file_path.to_str().unwrap(),
-        ],
+        &["--status-file", status_file_path.to_str().unwrap()],
     );
 
     // Helper to poll status file
@@ -988,16 +990,28 @@ fn test_integration_status_reporting_transitions() {
 
     // 1. Wait for initial OK status
     let content = wait_for_status(|c| c.starts_with("OK -"), Duration::from_secs(3));
-    assert!(content.starts_with("OK -"), "Expected OK status, got: {content}");
+    assert!(
+        content.starts_with("OK -"),
+        "Expected OK status, got: {content}"
+    );
 
     // 2. Wait for transition to WARNING (poll failures)
     let content = wait_for_status(|c| c.starts_with("WARNING -"), Duration::from_secs(3));
-    assert!(content.starts_with("WARNING -"), "Expected WARNING status, got: {content}");
-    assert!(content.contains("Consecutive storage failure"), "Expected storage failure info in: {content}");
+    assert!(
+        content.starts_with("WARNING -"),
+        "Expected WARNING status, got: {content}"
+    );
+    assert!(
+        content.contains("Consecutive storage failure"),
+        "Expected storage failure info in: {content}"
+    );
 
     // 3. Wait for transition back to OK (upon recovery)
     let content = wait_for_status(|c| c.starts_with("OK -"), Duration::from_secs(5));
-    assert!(content.starts_with("OK -"), "Expected recovered OK status, got: {content}");
+    assert!(
+        content.starts_with("OK -"),
+        "Expected recovered OK status, got: {content}"
+    );
 }
 
 #[test]
@@ -1030,7 +1044,10 @@ fn test_integration_status_cli_check() {
         .expect("Failed to run fencer binary for status query");
 
     assert_eq!(output.status.code(), Some(0));
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "OK - Daemon is happy");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "OK - Daemon is happy"
+    );
 
     // 3. Write WARNING status to file and check (should exit 1)
     fs::write(&status_file_path, "WARNING - Stale data\n").unwrap();
@@ -1042,7 +1059,10 @@ fn test_integration_status_cli_check() {
         .expect("Failed to run fencer binary for status query");
 
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "WARNING - Stale data");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "WARNING - Stale data"
+    );
 
     // 4. Write CRITICAL status to file and check (should exit 2)
     fs::write(&status_file_path, "CRITICAL - Reboot failed\n").unwrap();
@@ -1054,7 +1074,10 @@ fn test_integration_status_cli_check() {
         .expect("Failed to run fencer binary for status query");
 
     assert_eq!(output.status.code(), Some(2));
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "CRITICAL - Reboot failed");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "CRITICAL - Reboot failed"
+    );
 
     // 5. Write badly formatted status to file and check (should exit 3)
     fs::write(&status_file_path, "INVALID STATUS FORMAT\n").unwrap();
@@ -1133,7 +1156,10 @@ defaults {
         .arg("--file-map")
         .arg("show maps json=all_active_running.json,failed_all_timeout.json")
         .arg("--file-map")
-        .arg(format!("show config={}", warning_config_path.to_str().unwrap()))
+        .arg(format!(
+            "show config local={}",
+            warning_config_path.to_str().unwrap()
+        ))
         .arg("--verbose")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1147,10 +1173,7 @@ defaults {
     start_fencer(
         &mut ctx,
         "pve001",
-        &[
-            "--status-file",
-            status_file_path.to_str().unwrap(),
-        ],
+        &["--status-file", status_file_path.to_str().unwrap()],
     );
 
     // Helper to query status from CLI
@@ -1162,7 +1185,10 @@ defaults {
             .arg(&status_file_path)
             .output()
             .expect("Failed to run fencer in status-query mode");
-        (output.status.code(), String::from_utf8_lossy(&output.stdout).trim().to_string())
+        (
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        )
     };
 
     // 1. Initial status check: must report the dev_loss_tmo warning
@@ -1176,17 +1202,30 @@ defaults {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    assert!(initial_ok, "Initial warning status not written or incorrect");
+    assert!(
+        initial_ok,
+        "Initial warning status not written or incorrect"
+    );
 
-    // 2. Wait for at least 3 times the poll interval (poll interval is 1s, so 3 seconds)
-    // where maps cycle to failed
-    std::thread::sleep(Duration::from_secs(3));
-
-    // The status should update to include the consecutive storage failure warning
-    let (code, stdout) = query_status();
-    assert_eq!(code, Some(1));
-    assert!(stdout.contains("Consecutive storage failure"), "Expected consecutive failure in: {stdout}");
-    assert!(stdout.contains("dev_loss_tmo is not configured"), "Expected dev_loss_tmo warning in: {stdout}");
+    let start2 = std::time::Instant::now();
+    let mut second_ok = false;
+    let mut last_stdout = String::new();
+    while start2.elapsed() < Duration::from_secs(5) {
+        let (code, stdout) = query_status();
+        last_stdout = stdout.clone();
+        if code == Some(1)
+            && stdout.contains("Consecutive storage failure")
+            && stdout.contains("dev_loss_tmo is not configured")
+        {
+            second_ok = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        second_ok,
+        "Expected consecutive failure and config warning, last stdout: {last_stdout}"
+    );
 }
 
 #[test]
@@ -1218,7 +1257,10 @@ defaults {
         .arg("--file-map")
         .arg("show maps json=all_active_running.json")
         .arg("--file-map")
-        .arg(format!("show config={}", warning_config_path.to_str().unwrap()))
+        .arg(format!(
+            "show config local={}",
+            warning_config_path.to_str().unwrap()
+        ))
         .arg("--verbose")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1232,10 +1274,7 @@ defaults {
     start_fencer(
         &mut ctx,
         "pve001",
-        &[
-            "--status-file",
-            status_file_path.to_str().unwrap(),
-        ],
+        &["--status-file", status_file_path.to_str().unwrap()],
     );
 
     // Wait for at least 3 times the poll interval (poll interval is 1s, so 3 seconds)

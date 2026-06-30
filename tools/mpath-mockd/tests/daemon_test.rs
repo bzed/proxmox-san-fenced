@@ -427,7 +427,7 @@ fn test_daemon_all_commands() {
         ("show topology", vec!["create:", "mpatha"]),
         ("list maps", vec!["name", "sysfs", "uuid"]),
         ("show status", vec!["paths:", "busy"]),
-        ("show config", vec!["defaults", "blacklist"]),
+        ("show config local", vec!["defaults", "blacklist"]),
     ];
 
     for (command, expected_contents) in test_cases {

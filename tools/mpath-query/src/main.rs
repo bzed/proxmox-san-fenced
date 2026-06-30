@@ -63,7 +63,7 @@ enum Commands {
     ShowTopology,
     /// Show multipath configuration
     #[command(alias = "config")]
-    ShowConfig,
+    ShowConfigLocal,
     /// Show multipath status
     #[command(alias = "status")]
     ShowStatus,
@@ -79,7 +79,7 @@ fn main() {
     let command = match &cli.subcommand {
         Some(Commands::ShowMapsJson) => "show maps json",
         Some(Commands::ShowTopology) => "show topology",
-        Some(Commands::ShowConfig) => "show config",
+        Some(Commands::ShowConfigLocal) => "show config local",
         Some(Commands::ShowStatus) => "show status",
         Some(Commands::ListMaps) => "list maps",
         None => &cli.command,

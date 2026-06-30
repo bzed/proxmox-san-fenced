@@ -16,13 +16,38 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::time::Duration;
 
+pub mod config;
 pub mod status;
 
 #[derive(Deserialize, Debug)]
-pub(crate) struct MultipathOutput {
+pub struct MultipathOutput {
     pub(crate) major_version: Option<u32>,
     pub(crate) minor_version: Option<u32>,
     pub(crate) maps: Option<Vec<MultipathMap>>,
+}
+
+pub fn parse_multipathd_response(response_json: &str) -> Option<Vec<MultipathMap>> {
+    if response_json.len() > 10 * 1024 * 1024 {
+        warn!("Rejected multipathd response: size exceeds 10MB limit");
+        return None;
+    }
+
+    match serde_json::from_str::<MultipathOutput>(response_json) {
+        Ok(out) => {
+            if let (Some(major), Some(minor)) = (out.major_version, out.minor_version) {
+                if major != 0 {
+                    warn!("Unsupported multipathd JSON schema version: {major}.{minor}");
+                }
+            } else {
+                warn!("Missing version fields in multipathd JSON response");
+            }
+            Some(out.maps.unwrap_or_default())
+        }
+        Err(e) => {
+            warn!("Failed to parse multipathd response: {e}");
+            None
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -31,6 +56,8 @@ pub struct MultipathMap {
     pub(crate) uuid: String,
     #[serde(rename = "path_groups")]
     pub(crate) path_groups: Option<Vec<PathGroup>>,
+    pub(crate) vend: Option<String>,
+    pub(crate) prod: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -182,7 +209,8 @@ pub fn is_map_dead(map: &MultipathMap) -> bool {
     }
 }
 
-static FENCING_IN_PROGRESS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static FENCING_IN_PROGRESS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 #[tracing::instrument]
 pub async fn trigger_fencing(sysrq_char: &str) {
@@ -280,30 +308,11 @@ impl Fencer {
     /// Evaluates the current state of multipath maps against the active LUN set by parsing a JSON response.
     /// Returns true if fencing should be triggered.
     pub fn update(&mut self, response_json: &str, active_luns: &HashSet<String>) -> bool {
-        // Limit JSON size to 10 MB to prevent memory exhaustion DoS
-        if response_json.len() > 10 * 1024 * 1024 {
-            warn!("Rejected multipathd response: size exceeds 10MB limit");
-            return false;
+        if let Some(maps) = crate::parse_multipathd_response(response_json) {
+            self.update_with_maps(&maps, active_luns)
+        } else {
+            false
         }
-
-        let output: MultipathOutput = match serde_json::from_str::<MultipathOutput>(response_json) {
-            Ok(out) => {
-                if let (Some(major), Some(minor)) = (out.major_version, out.minor_version) {
-                    if major != 0 {
-                        warn!("Unsupported multipathd JSON schema version: {major}.{minor}");
-                    }
-                } else {
-                    warn!("Missing version fields in multipathd JSON response");
-                }
-                out
-            }
-            Err(e) => {
-                warn!("Failed to parse multipathd response: {e}");
-                return false;
-            }
-        };
-        let maps = output.maps.unwrap_or_default();
-        self.update_with_maps(&maps, active_luns)
     }
 
     /// Evaluates the current state of multipath maps against the active LUN set.
@@ -484,6 +493,8 @@ mod tests {
         let alive_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "36001405a415ff6800000000000000000".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("active".to_string()),
                 paths: Some(vec![
@@ -502,6 +513,8 @@ mod tests {
         let missing_st_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "36001".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: None,
                 paths: Some(vec![MpathPath { dm_st: None }]),
@@ -513,6 +526,8 @@ mod tests {
         let undef_path_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "36002".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("active".to_string()),
                 paths: Some(vec![MpathPath {
@@ -526,6 +541,8 @@ mod tests {
         let enabled_pg_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "36003".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("enabled".to_string()),
                 paths: Some(vec![MpathPath {
@@ -539,6 +556,8 @@ mod tests {
         let disabled_pg_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "36004".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("disabled".to_string()),
                 paths: Some(vec![MpathPath {
@@ -552,6 +571,8 @@ mod tests {
         let undef_pg_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "36005".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("undef".to_string()),
                 paths: Some(vec![MpathPath {
@@ -568,6 +589,8 @@ mod tests {
         let dead_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368a".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("active".to_string()),
                 paths: Some(vec![
@@ -586,6 +609,8 @@ mod tests {
         let empty_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368b".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("active".to_string()),
                 paths: Some(Vec::new()),
@@ -597,6 +622,8 @@ mod tests {
         let no_pg_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368c".to_string(),
+            vend: None,
+            prod: None,
             path_groups: None,
         };
         assert!(is_map_dead(&no_pg_map));
@@ -605,6 +632,8 @@ mod tests {
         let ghost_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368d".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("active".to_string()),
                 paths: Some(vec![MpathPath {
@@ -618,6 +647,8 @@ mod tests {
         let inactive_pg_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368e".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("offline".to_string()),
                 paths: Some(vec![MpathPath {
@@ -631,6 +662,8 @@ mod tests {
         let failed_pg_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368f".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("failed".to_string()),
                 paths: Some(vec![MpathPath {
@@ -644,6 +677,8 @@ mod tests {
         let faulty_path_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368g".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("active".to_string()),
                 paths: Some(vec![MpathPath {
@@ -975,6 +1010,8 @@ mod tests {
         let maps = vec![MultipathMap {
             name: "mpathb".to_string(),
             uuid: "368f".to_string(),
+            vend: None,
+            prod: None,
             path_groups: Some(vec![PathGroup {
                 dm_st: Some("failed".to_string()),
                 paths: Some(vec![MpathPath {
@@ -997,6 +1034,8 @@ mod tests {
             MultipathMap {
                 name: "mpatha".to_string(),
                 uuid: "uuid-a".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1007,6 +1046,8 @@ mod tests {
             MultipathMap {
                 name: "mpathb".to_string(),
                 uuid: "uuid-b".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1077,6 +1118,8 @@ mod tests {
             MultipathMap {
                 name: "mpatha".to_string(),
                 uuid: "uuid-a".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1087,6 +1130,8 @@ mod tests {
             MultipathMap {
                 name: "mpathb".to_string(),
                 uuid: "uuid-b".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1097,6 +1142,8 @@ mod tests {
             MultipathMap {
                 name: "mpathc".to_string(),
                 uuid: "uuid-c".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1115,6 +1162,8 @@ mod tests {
             MultipathMap {
                 name: "mpatha".to_string(),
                 uuid: "uuid-a".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("failed".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1125,6 +1174,8 @@ mod tests {
             MultipathMap {
                 name: "mpathb".to_string(),
                 uuid: "uuid-b".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1135,6 +1186,8 @@ mod tests {
             MultipathMap {
                 name: "mpathc".to_string(),
                 uuid: "uuid-c".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1168,6 +1221,8 @@ mod tests {
             MultipathMap {
                 name: "mpatha".to_string(),
                 uuid: "uuid-a".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1178,6 +1233,8 @@ mod tests {
             MultipathMap {
                 name: "mpathb".to_string(),
                 uuid: "uuid-b".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("active".to_string()),
                     paths: Some(vec![MpathPath {
@@ -1188,6 +1245,8 @@ mod tests {
             MultipathMap {
                 name: "mpathc".to_string(),
                 uuid: "uuid-c".to_string(),
+                vend: None,
+                prod: None,
                 path_groups: Some(vec![PathGroup {
                     dm_st: Some("failed".to_string()),
                     paths: Some(vec![MpathPath {

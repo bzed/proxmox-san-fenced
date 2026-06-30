@@ -160,7 +160,11 @@ mod tests {
         let tracker = StatusTracker::new();
 
         // Before status file is configured, operations should not panic or fail
-        tracker.set_issue("issue1", StatusLevel::Warning, "Warning message".to_string());
+        tracker.set_issue(
+            "issue1",
+            StatusLevel::Warning,
+            "Warning message".to_string(),
+        );
         tracker.clear_issue("issue1");
 
         // Now configure a temp file
@@ -189,21 +193,39 @@ mod tests {
         wait_for_content(&status_file_path, "OK - Daemon is running normally\n");
 
         // Set a warning issue
-        tracker.set_issue("test_warn", StatusLevel::Warning, "First warning".to_string());
+        tracker.set_issue(
+            "test_warn",
+            StatusLevel::Warning,
+            "First warning".to_string(),
+        );
         wait_for_content(&status_file_path, "WARNING - First warning\n");
 
         // Set another warning issue
-        tracker.set_issue("another_warn", StatusLevel::Warning, "Second warning".to_string());
+        tracker.set_issue(
+            "another_warn",
+            StatusLevel::Warning,
+            "Second warning".to_string(),
+        );
         // Since we sort the messages, it should be "First warning; Second warning"
-        wait_for_content(&status_file_path, "WARNING - First warning; Second warning\n");
+        wait_for_content(
+            &status_file_path,
+            "WARNING - First warning; Second warning\n",
+        );
 
         // Set a critical issue
-        tracker.set_issue("critical_fail", StatusLevel::Critical, "Critical error occurred".to_string());
+        tracker.set_issue(
+            "critical_fail",
+            StatusLevel::Critical,
+            "Critical error occurred".to_string(),
+        );
         wait_for_content(&status_file_path, "CRITICAL - Critical error occurred\n");
 
         // Clear critical issue, should go back to WARNING
         tracker.clear_issue("critical_fail");
-        wait_for_content(&status_file_path, "WARNING - First warning; Second warning\n");
+        wait_for_content(
+            &status_file_path,
+            "WARNING - First warning; Second warning\n",
+        );
 
         // Clear prefix warnings
         tracker.clear_issues_with_prefix("test_");
@@ -217,4 +239,3 @@ mod tests {
         fs::remove_dir_all(&temp_dir).ok();
     }
 }
-
