@@ -1,3 +1,9 @@
+pve-san-fenced (0.1.9) unstable; urgency=medium
+
+  * [ecf9c4a] multipath: implement overrides parsing and precedence matching
+
+ -- Bernd Zeimetz <bzed@debian.org>  Fri, 03 Jul 2026 12:16:49 +0200
+
 pve-san-fenced (0.1.8) unstable; urgency=medium
 
   * [cfa6cac] Rework multipath configuration parsing to use show config local
