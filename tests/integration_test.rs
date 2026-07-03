@@ -1452,3 +1452,107 @@ fn test_integration_multipath_config_bad() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Multipath configuration recommendation warnings"));
 }
+
+#[test]
+fn test_integration_multipath_config_ok2() {
+    let mut ctx = TestContext::new("multipath_config_ok2", "pve001");
+    let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
+
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mockd_bin = workspace.join("target/debug/mpath-mockd");
+    let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
+
+    let child = Command::new(mockd_bin)
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--test-data-dir")
+        .arg(test_data_dir)
+        .arg("--file-map")
+        .arg("show maps json=mpatha_active_mpathb_failed.json")
+        .arg("--file-map")
+        .arg("show config local=../show_config_local/ok2.txt")
+        .arg("--verbose")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start mpath-mockd");
+
+    ctx.mock_daemon = Some(child);
+    std::thread::sleep(Duration::from_millis(200));
+
+    start_fencer(
+        &mut ctx,
+        "pve001",
+        &[
+            "--status-file",
+            status_file_path.to_str().unwrap(),
+            "--max-failures",
+            "9999",
+        ],
+    );
+
+    std::thread::sleep(Duration::from_secs(3));
+
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer in status-query mode");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("Multipath configuration recommendation warnings"));
+}
+
+#[test]
+fn test_integration_multipath_config_bad2() {
+    let mut ctx = TestContext::new("multipath_config_bad2", "pve001");
+    let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
+
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mockd_bin = workspace.join("target/debug/mpath-mockd");
+    let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
+
+    let child = Command::new(mockd_bin)
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--test-data-dir")
+        .arg(test_data_dir)
+        .arg("--file-map")
+        .arg("show maps json=mpatha_active_mpathb_failed.json")
+        .arg("--file-map")
+        .arg("show config local=../show_config_local/bad2.txt")
+        .arg("--verbose")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start mpath-mockd");
+
+    ctx.mock_daemon = Some(child);
+    std::thread::sleep(Duration::from_millis(200));
+
+    start_fencer(
+        &mut ctx,
+        "pve001",
+        &[
+            "--status-file",
+            status_file_path.to_str().unwrap(),
+            "--max-failures",
+            "9999",
+        ],
+    );
+
+    std::thread::sleep(Duration::from_secs(3));
+
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let output = Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file")
+        .arg(&status_file_path)
+        .output()
+        .expect("Failed to run fencer in status-query mode");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Multipath configuration recommendation warnings"));
+}

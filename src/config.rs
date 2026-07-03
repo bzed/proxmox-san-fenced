@@ -82,7 +82,7 @@ pub fn tokenize(config: &str) -> Vec<Token> {
     tokens
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DeviceConfig {
     pub vendor: Option<String>,
     pub product: Option<String>,
@@ -90,10 +90,11 @@ pub struct DeviceConfig {
     pub no_path_retry: Option<String>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct MultipathConfig {
     pub defaults: DeviceConfig,
     pub devices: Vec<DeviceConfig>,
+    pub overrides: DeviceConfig,
 }
 
 pub fn parse_multipath_config(config_str: &str) -> MultipathConfig {
@@ -118,9 +119,14 @@ pub fn parse_multipath_config(config_str: &str) -> MultipathConfig {
                                 }
                             }
                             Token::CloseBrace => break,
-                            _ => {}
+                            Token::Word(_) | Token::OpenBrace => {}
                         }
                     }
+                }
+            }
+            Token::Word(w) if w == "overrides" => {
+                if let Some(Token::OpenBrace) = iter.next() {
+                    config.overrides = parse_block(&mut iter);
                 }
             }
             Token::Word(_) => {
@@ -132,12 +138,12 @@ pub fn parse_multipath_config(config_str: &str) -> MultipathConfig {
                             Some(Token::OpenBrace) => depth += 1,
                             Some(Token::CloseBrace) => depth -= 1,
                             None => break,
-                            _ => {}
+                            Some(Token::Word(_)) => {}
                         }
                     }
                 }
             }
-            _ => {}
+            Token::OpenBrace | Token::CloseBrace => {}
         }
     }
     config
@@ -153,6 +159,7 @@ fn is_known_key(s: &str) -> bool {
             | "defaults"
             | "devices"
             | "device"
+            | "overrides"
             | "path_grouping_policy"
             | "path_selector"
             | "path_checker"
@@ -212,7 +219,7 @@ fn parse_block(iter: &mut std::iter::Peekable<impl Iterator<Item = Token>>) -> D
                     }
                 }
             }
-            _ => {}
+            Token::Word(_) => {}
         }
     }
     block
@@ -252,6 +259,14 @@ pub fn get_merged_config(config: &MultipathConfig, vendor: &str, product: &str) 
             }
         }
     }
+
+    if config.overrides.dev_loss_tmo.is_some() {
+        merged.dev_loss_tmo = config.overrides.dev_loss_tmo.clone();
+    }
+    if config.overrides.no_path_retry.is_some() {
+        merged.no_path_retry = config.overrides.no_path_retry.clone();
+    }
+
     merged
 }
 
@@ -408,5 +423,54 @@ devices {
         let merged = get_merged_config(&parsed, "HUAWEI", "XSG1");
         // Should not crash, and should fallback (vendor match fails because Regex "[ " is invalid)
         assert_ne!(merged.dev_loss_tmo.as_deref(), Some("30"));
+    }
+
+    #[test]
+    fn test_parse_multipath_config_overrides() {
+        let config_str = r#"
+defaults {
+    no_path_retry "queue"
+    dev_loss_tmo "120"
+}
+devices {
+    device {
+        vendor "HUAWEI"
+        product "XSG1"
+        dev_loss_tmo 30
+    }
+}
+overrides {
+    dev_loss_tmo "infinity"
+}
+"#;
+        let config = parse_multipath_config(config_str);
+
+        // Verify the entire defaults object
+        let expected_defaults = DeviceConfig {
+            vendor: None,
+            product: None,
+            dev_loss_tmo: Some("120".to_string()),
+            no_path_retry: Some("queue".to_string()),
+        };
+        assert_eq!(config.defaults, expected_defaults);
+
+        // Verify the parsed overrides
+        let expected_overrides = DeviceConfig {
+            vendor: None,
+            product: None,
+            dev_loss_tmo: Some("infinity".to_string()),
+            no_path_retry: None,
+        };
+        assert_eq!(config.overrides, expected_overrides);
+
+        // Verify the merging logic with overrides prioritizing over devices
+        let merged = get_merged_config(&config, "HUAWEI", "XSG1");
+        let expected_merged = DeviceConfig {
+            vendor: None,
+            product: None,
+            dev_loss_tmo: Some("infinity".to_string()),
+            no_path_retry: Some("queue".to_string()),
+        };
+        assert_eq!(merged, expected_merged);
     }
 }
