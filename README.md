@@ -54,7 +54,7 @@ The project includes standard Debian packaging (`debian/` directory). To build t
 
 ```bash
 # Clean up target and temporary build files
-just clean
+./debian/rules clean
 
 # Build the Debian package
 dpkg-buildpackage -us -uc -b
