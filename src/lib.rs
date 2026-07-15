@@ -442,9 +442,14 @@ impl Fencer {
                     })
                     .collect();
                 let targets = &self.target_wwids;
+                let target_msg = if targets.is_empty() {
+                    String::new()
+                } else {
+                    format!(" Target WWIDs: {targets:?}.")
+                };
                 let decision_msg = format!(
                     "DECISION: Rebooting node because monitored multipath maps in use by running VMs have failed. \
-                     Failed monitored maps: {dead_map_names:?}. Active LUNs: {active_luns:?}. Target WWIDs: {targets:?}."
+                     Failed monitored maps: {dead_map_names:?}. Active LUNs: {active_luns:?}.{target_msg}"
                 );
                 warn!("{decision_msg}");
 
