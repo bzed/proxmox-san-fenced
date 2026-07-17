@@ -1,3 +1,10 @@
+pve-san-fenced (0.1.10) unstable; urgency=medium
+
+  * [6df5f68] Fix clean command
+  * [eadb9b6] fix(log): Conditionally omit empty Target WWIDs from fencing decision message.
+
+ -- Bernd Zeimetz <bzed@debian.org>  Thu, 16 Jul 2026 11:54:21 +0200
+
 pve-san-fenced (0.1.9) unstable; urgency=medium
 
   * [ecf9c4a] multipath: implement overrides parsing and precedence matching
