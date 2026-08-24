@@ -147,7 +147,9 @@ impl StatusTracker {
                 return;
             }
             if let Err(e) = fs::rename(&temp_file, &file_path) {
-                log::error!("Failed to rename temporary status file '{temp_file}' to '{file_path}': {e}");
+                log::error!(
+                    "Failed to rename temporary status file '{temp_file}' to '{file_path}': {e}"
+                );
                 let _ = fs::remove_file(&temp_file);
             }
         });

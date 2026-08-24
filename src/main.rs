@@ -139,7 +139,6 @@ struct Cli {
     discovery_backoff_max: u64,
 }
 
-
 fn sysrq_char_to_bit(c: char) -> Option<i32> {
     match c {
         's' => Some(16),
@@ -252,12 +251,18 @@ async fn main() {
     {
         let status_path = std::path::Path::new(&cli.status_file);
         if !status_path.is_absolute() {
-            eprintln!("Error: Status file path must be absolute: {}", cli.status_file);
+            eprintln!(
+                "Error: Status file path must be absolute: {}",
+                cli.status_file
+            );
             std::process::exit(1);
         }
         if let Some(parent) = status_path.parent() {
             if !parent.is_dir() {
-                eprintln!("Error: Parent directory of status file does not exist: {}", parent.display());
+                eprintln!(
+                    "Error: Parent directory of status file does not exist: {}",
+                    parent.display()
+                );
                 std::process::exit(1);
             }
         } else {
@@ -318,7 +323,8 @@ async fn main() {
         && !cli.test_mode
         && std::env::var("PVE_SAN_FENCE_DRY_RUN").is_err()
     {
-        let msg = "PVE_SAN_TEST_DATA_DIR is set but daemon is not running in test/dry-run mode".to_string();
+        let msg = "PVE_SAN_TEST_DATA_DIR is set but daemon is not running in test/dry-run mode"
+            .to_string();
         error!("{msg}");
         pve_san_fenced::status::get_status_tracker().set_issue(
             "config_error",
@@ -582,7 +588,13 @@ async fn main() {
         match libmultipath::send_multipath_command_to_socket(&socket, "show config local") {
             Ok(config_response) => {
                 pve_san_fenced::status::get_status_tracker().clear_issue("config_query_error");
-                pve_san_fenced::config::check_maps_config(&maps, &active_set, &config_response);
+                let fencing_time_sec = max_failures * poll_interval;
+                pve_san_fenced::config::check_maps_config(
+                    &maps,
+                    &active_set,
+                    &config_response,
+                    fencing_time_sec,
+                );
             }
             Err(e) => {
                 let msg = format!("Failed to query multipathd config: {e}");
@@ -774,4 +786,5 @@ mod tests {
         assert_eq!(cli_env.poll_interval, 15);
         assert_eq!(cli_env.max_failures, 10);
         assert!(cli_env.test_mode);
-    }}
+    }
+}

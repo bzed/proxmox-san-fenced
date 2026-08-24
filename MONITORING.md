@@ -105,7 +105,7 @@ The status check exits with one of the following standard Nagios/Icinga codes:
 * **Meaning**: The daemon successfully queried `multipathd` but detected configuration parameters that do not align with optimal fencing recommendations for actively used maps.
 * **Possible Reasons**:
   * `no_path_retry` is not set to `queue`. If set to `fail` or a numeric value, paths fail immediately on transient drops rather than queueing.
-  * `dev_loss_tmo` is not set to `infinity`. If set to a numeric value, paths are removed from the system during sustained drops, which can prevent the fencer from detecting the dead LUNs and executing panic/reboots.
+  * `dev_loss_tmo` is not set to `infinity` or a sufficiently high numeric value. If set to a low numeric value, paths are removed from the system during sustained drops, which can prevent the fencer from detecting the dead LUNs and executing panic/reboots before the device disappears. A safe numeric value must be strictly greater than `(max_failures * poll_interval) + 60` seconds.
 * **Solutions**:
   1. Edit `/etc/multipath.conf` and update the defaults or device-specific configuration:
      ```text
@@ -114,6 +114,7 @@ The status check exits with one of the following standard Nagios/Icinga codes:
          dev_loss_tmo "infinity"
      }
      ```
+     *(Note: Alternatively, `dev_loss_tmo` can be set to a safe high numeric value as described above).*
   2. Reload `multipathd` to apply:
      ```bash
      systemctl reload multipath-tools

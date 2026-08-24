@@ -172,7 +172,9 @@ fn start_fencer(ctx: &mut TestContext, node_name: &str, extra_args: &[&str]) {
         .arg("--discovery-interval")
         .arg("10");
 
-    let has_max_failures = extra_args.iter().any(|arg| arg.starts_with("--max-failures"));
+    let has_max_failures = extra_args
+        .iter()
+        .any(|arg| arg.starts_with("--max-failures"));
     if !has_max_failures {
         cmd.arg("--max-failures").arg("3");
     }

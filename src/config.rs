@@ -191,7 +191,10 @@ fn parse_block(iter: &mut std::iter::Peekable<impl Iterator<Item = Token>>) -> D
                     match next_token {
                         Token::Word(val) => {
                             if is_known_key(val) {
-                                warn!("Key '{}' has no value, next token is a known key '{}'", key, val);
+                                warn!(
+                                    "Key '{}' has no value, next token is a known key '{}'",
+                                    key, val
+                                );
                                 false
                             } else {
                                 true
@@ -274,7 +277,12 @@ use crate::MultipathMap;
 use log::warn;
 use std::collections::HashSet;
 
-pub fn check_maps_config(maps: &[MultipathMap], active_luns: &HashSet<String>, config_str: &str) {
+pub fn check_maps_config(
+    maps: &[MultipathMap],
+    active_luns: &HashSet<String>,
+    config_str: &str,
+    fencing_time_sec: u64,
+) {
     let parsed_config = parse_multipath_config(config_str);
     let mut all_warnings = Vec::new();
 
@@ -300,14 +308,26 @@ pub fn check_maps_config(maps: &[MultipathMap], active_luns: &HashSet<String>, c
 
         let mut map_warnings = Vec::new();
 
+        let min_dev_loss_tmo = fencing_time_sec + 60;
         match merged.dev_loss_tmo.as_deref() {
             Some("infinity") => {}
-            Some(val) => map_warnings.push(format!(
-                "dev_loss_tmo is set to '{val}' instead of 'infinity'"
-            )),
-            None => {
-                map_warnings.push("dev_loss_tmo is not configured (expected infinity)".to_string())
+            Some(val) => {
+                if let Ok(num) = val.parse::<u64>() {
+                    if num < min_dev_loss_tmo {
+                        map_warnings.push(format!(
+                            "dev_loss_tmo is set to '{val}' which is too low (expected 'infinity' or >= {min_dev_loss_tmo})"
+                        ));
+                    }
+                } else {
+                    map_warnings.push(format!(
+                        "dev_loss_tmo is set to '{val}' instead of 'infinity' or a safe high number"
+                    ));
+                }
             }
+            None => map_warnings.push(
+                "dev_loss_tmo is not configured (expected 'infinity' or a safe high number)"
+                    .to_string(),
+            ),
         }
 
         match merged.no_path_retry.as_deref() {
@@ -404,7 +424,10 @@ defaults {
 "#;
         let config_bug3 = parse_multipath_config(config_str_bug3);
         assert_eq!(config_bug3.defaults.vendor, None);
-        assert_eq!(config_bug3.defaults.dev_loss_tmo.as_deref(), Some("infinity"));
+        assert_eq!(
+            config_bug3.defaults.dev_loss_tmo.as_deref(),
+            Some("infinity")
+        );
         assert_eq!(config_bug3.defaults.no_path_retry.as_deref(), Some("queue"));
     }
 
