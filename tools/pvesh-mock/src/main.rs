@@ -127,9 +127,13 @@ fn main() {
         path.join(DEFAULT_TEST_DATA_DIR)
     };
 
-    if cli.verbose {
-        eprintln!("Test data directory: {}", test_data_dir.display());
-    }
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pvesh-mock-debug.log").unwrap();
+    use std::io::Write;
+    writeln!(f, ">>> PVESH-MOCK RUNNING!").unwrap();
+    writeln!(f, ">>> PWD: {:?}", std::env::current_dir()).unwrap();
+    writeln!(f, ">>> PVE_SAN_TEST_DATA_DIR: {:?}", env::var("PVE_SAN_TEST_DATA_DIR")).unwrap();
+    writeln!(f, ">>> test_data_dir resolved to: {}", test_data_dir.display()).unwrap();
+    writeln!(f, ">>> command: {:?}, path_parts: {:?}", cli.command, path_parts).unwrap();
 
     let response = match (cli.command, &path_parts[..]) {
         (CommandType::Ls, ["nodes", node, "qemu"]) => {

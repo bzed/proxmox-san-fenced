@@ -291,6 +291,8 @@ pub struct Fencer {
     max_failures: u64,
     target_wwids: HashSet<String>,
     previous_map_states: HashMap<String, bool>,
+    had_working_paths: HashSet<String>,
+    permanently_broken_luns: HashSet<String>,
 }
 
 impl Fencer {
@@ -301,6 +303,8 @@ impl Fencer {
             max_failures,
             target_wwids,
             previous_map_states: HashMap::new(),
+            had_working_paths: HashSet::new(),
+            permanently_broken_luns: HashSet::new(),
         }
     }
 
@@ -357,14 +361,35 @@ impl Fencer {
         debug!("Monitored maps subset: {:?}", monitored_maps);
 
         for map in &monitored_maps {
+            let total_paths = map.path_groups.as_ref().map(|groups| {
+                groups.iter().map(|g| g.paths.as_ref().map_or(0, |p| p.len())).sum::<usize>()
+            }).unwrap_or(0);
+
+            if total_paths > 0 {
+                self.had_working_paths.insert(map.name.clone());
+            } else if total_paths == 0 {
+                if self.had_working_paths.contains(&map.name) {
+                    self.permanently_broken_luns.insert(map.name.clone());
+                }
+            }
+
             let name = &map.name;
             let pg = &map.path_groups;
             debug!("Map {name} path details: {pg:?}");
-            let is_dead = is_map_dead(map);
+            let mut is_dead = is_map_dead(map);
+
+            if self.permanently_broken_luns.contains(name) {
+                is_dead = true;
+            }
+
             let prev_dead = self.previous_map_states.insert(map.name.clone(), is_dead);
             if prev_dead != Some(is_dead) {
                 let status_str = if is_dead {
-                    "FAILED (all paths dead)"
+                    if self.permanently_broken_luns.contains(name) {
+                        "FAILED (all paths dead - permanently latched)"
+                    } else {
+                        "FAILED (all paths dead)"
+                    }
                 } else {
                     "HEALTHY (active path(s) found)"
                 };
@@ -375,6 +400,12 @@ impl Fencer {
         let monitored_names: HashSet<&String> = monitored_maps.iter().map(|m| &m.name).collect();
         self.previous_map_states
             .retain(|name, _| monitored_names.contains(name));
+        self.had_working_paths
+            .retain(|name| monitored_names.contains(name));
+        // We do NOT retain permanently_broken_luns, because if a LUN disappears entirely, we still want it broken if it ever reappears? Or if it drops from monitored maps, it's removed.
+        // The user says "if a multipath was in use and all paths had disappeared, we need to reboot". If it's removed from VMs (no longer monitored), we don't care anymore.
+        self.permanently_broken_luns
+            .retain(|name| monitored_names.contains(name));
 
         if monitored_maps.is_empty() {
             if self.consecutive_failures > 0 {
@@ -396,7 +427,7 @@ impl Fencer {
                         .iter()
                         .find(|m| m.name == part || m.uuid == part)
                         .copied()
-                        .map(is_map_dead)
+                        .map(|m| is_map_dead(m) || self.permanently_broken_luns.contains(&m.name))
                         .unwrap_or(false)
                 })
             } else {
@@ -404,7 +435,7 @@ impl Fencer {
                     .iter()
                     .find(|m| m.name == *lun || m.uuid == *lun)
                     .copied()
-                    .map(is_map_dead)
+                    .map(|m| is_map_dead(m) || self.permanently_broken_luns.contains(&m.name))
                     .unwrap_or(false)
             };
 
@@ -434,7 +465,7 @@ impl Fencer {
             if self.consecutive_failures >= self.max_failures {
                 let dead_map_names: Vec<String> = monitored_maps
                     .iter()
-                    .filter(|m| is_map_dead(m))
+                    .filter(|m| is_map_dead(m) || self.permanently_broken_luns.contains(&m.name))
                     .map(|m| {
                         let name = &m.name;
                         let uuid = &m.uuid;

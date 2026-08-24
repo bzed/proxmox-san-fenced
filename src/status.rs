@@ -138,10 +138,13 @@ impl StatusTracker {
             (max_level, msgs_owned.join("; "))
         };
 
-        // Spawn a thread to write the file so it never blocks the caller (especially during storage/IO locks)
         let handle = std::thread::spawn(move || {
             let content = format!("{level} - {message}\n");
-            let temp_file = format!("{}.tmp.{}", file_path, std::process::id());
+
+            static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+            let temp_file = format!("{}.tmp.{}.{}", file_path, std::process::id(), id);
             if let Err(e) = fs::write(&temp_file, content) {
                 log::error!("Failed to write temporary status file '{temp_file}': {e}");
                 return;

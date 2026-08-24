@@ -1,0 +1,26 @@
+{
+   "major_version": 0,
+   "minor_version": 1,
+   "maps": [{
+      "name" : "mpatha",
+      "uuid" : "360000000000000000000000000000001",
+      "sysfs" : "dm-6",
+      "failback" : "immediate",
+      "queueing" : "off",
+      "paths" : 0,
+      "write_prot" : "rw",
+      "dm_st" : "active",
+      "features" : "0",
+      "hwhandler" : "0",
+      "action" : "",
+      "path_faults" : 8,
+      "vend" : "##",
+      "prod" : "##",
+      "rev" : "##",
+      "switch_grp" : 0,
+      "map_loads" : 9,
+      "total_q_time" : 76,
+      "q_timeouts" : 1,
+      "path_groups": []
+   }]
+}

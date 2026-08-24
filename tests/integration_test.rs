@@ -1558,3 +1558,89 @@ fn test_integration_multipath_config_bad2() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Multipath configuration recommendation warnings"));
 }
+
+#[test]
+fn test_integration_disappeared_paths_fencing() {
+    let mut ctx = TestContext::new("disappeared_paths_fencing", "pve001");
+    let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
+
+    start_mockd(
+        &mut ctx,
+        "show maps json=paths_disappear_ok.json,paths_disappear_failing.json,paths_disappear_failed.json,paths_disappear_back.json,paths_disappear_back.json",
+    );
+
+    let custom_pvesh_dir = ctx.temp_dir.join("custom_pvesh");
+    fs::create_dir_all(custom_pvesh_dir.join("get_nodes/config")).unwrap();
+
+    // Copy lsblk.json so libpve-san can build its mpath_map
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fs::copy(
+        workspace.join("test-data/pvesh/lsblk.json"),
+        custom_pvesh_dir.join("lsblk.json"),
+    ).unwrap();
+
+    // Create a node with only 1 VM that uses mpatha
+    fs::write(
+        custom_pvesh_dir.join("get_nodes/pve001_qemu.json"),
+        r#"[{"name":"test-vm","pid":1234,"status":"running","vmid":100}]"#,
+    ).unwrap();
+    fs::write(
+        custom_pvesh_dir.join("get_nodes/config/100.json"),
+        r#"{"scsi0":"/dev/mapper/mpatha,size=10G"}"#,
+    ).unwrap();
+
+    // Start fencer with custom PVE_SAN_TEST_DATA_DIR
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fencer_bin = workspace.join("target/debug/pve-san-fenced");
+    let pvesh_mock_bin = workspace.join("target/debug/pvesh-mock");
+    let mut cmd = Command::new(fencer_bin);
+    cmd.arg("--node-name")
+        .arg("pve001")
+        .arg("--socket")
+        .arg(&ctx.socket_path)
+        .arg("--pvesh-command")
+        .arg(pvesh_mock_bin)
+        .arg("--poll-interval").arg("1")
+        .arg("--discovery-interval").arg("10")
+        .arg("--max-failures").arg("4")
+        .arg("--status-file").arg(&status_file_path);
+
+    cmd.env("PVE_SAN_TEST_DATA_DIR", custom_pvesh_dir)
+        .env("PVE_SAN_SYS_NODES_DIR", ctx.temp_dir.join("nodes"))
+        .env("PVE_SAN_FENCE_DRY_RUN", "1")
+        .env("RUST_LOG", "debug")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let target_daemon = cmd.spawn().expect("Failed to start fencer");
+    ctx.target_daemon = Some(target_daemon);
+
+    // Helper to poll status file
+    let wait_for_status = |predicate: fn(&str) -> bool, timeout: Duration| -> String {
+        let start = std::time::Instant::now();
+        while start.elapsed() < timeout {
+            if let Ok(content) = fs::read_to_string(&status_file_path) {
+                if predicate(&content) {
+                    return content;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        fs::read_to_string(&status_file_path).unwrap_or_default()
+    };
+
+    let content = wait_for_status(|c| c.starts_with("CRITICAL -"), Duration::from_secs(8));
+
+    // Dump daemon stderr for debugging
+    let mut daemon_stderr = String::new();
+    if let Some(mut daemon) = ctx.target_daemon.take() {
+        daemon.kill().ok();
+        let output = daemon.wait_with_output().unwrap();
+        daemon_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    }
+
+    assert!(
+        content.starts_with("CRITICAL -"),
+        "Fencer should have triggered a reboot despite paths coming back.\nLast status: {content}\nDaemon stderr:\n{daemon_stderr}"
+    );
+}

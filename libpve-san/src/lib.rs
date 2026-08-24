@@ -312,7 +312,7 @@ impl PveSanClient {
 
     /// Creates a new PveSanClient with the given node name and custom pvesh command.
     pub fn with_node_and_pvesh(node: impl Into<String>, pvesh_command: &str) -> PveSanResult<Self> {
-        let config = PveSanConfig::new(node, Some(pvesh_command))?;
+        let config = PveSanConfig::new(node, Some(pvesh_command))?.with_mode(PveMode::Pvesh);
         Ok(Self { config })
     }
 
@@ -513,7 +513,6 @@ impl PveSanClient {
                 let path = format!("/nodes/{node}/qemu");
 
                 let json_output = self.run_pvesh_ls(&path).await?;
-
                 let data: Vec<serde_json::Value> = serde_json::from_str(&json_output)
                     .map_err(|e| PveSanError::JsonParseError(e.to_string()))?;
 
