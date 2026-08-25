@@ -31,7 +31,8 @@ defaults {
     # care of rebooting/fencing if recovery fails.
     no_path_retry "queue"
 
-    # Prevent multipathd from removing block devices when paths are lost.
+    # Prevent multipathd from removing block devices before fencing can occur.
+    # Safe values are "infinity" or any number >= (poll-interval * max-failures) + 60
     dev_loss_tmo "infinity"
 
     # Fast detection configuration
@@ -41,7 +42,7 @@ defaults {
 ```
 
 - **`no_path_retry "queue"`**: Keeps I/O queued when all paths are lost. This allows the fencing daemon time to monitor path state and decide whether to fence the node. If set to `fail`, I/O fails immediately, potentially causing VM file systems to switch to read-only before fencing occurs.
-- **`dev_loss_tmo "infinity"`**: Prevents `multipathd` from deleting the device mapper mapping after a timeout. If the device was deleted, the VM could not recover even if paths are restored, and the daemon would lose its ability to track the device.
+- **`dev_loss_tmo "infinity"`**: Prevents `multipathd` from deleting the device mapper mapping after a timeout. If the device was deleted prematurely, the VM could not recover even if paths are restored, and the daemon would lose its ability to track the device. While `"infinity"` is the safest default, numeric values are supported (and sometimes preferred to allow safe device removal) as long as they are high enough not to interfere with the fencing timeout. The daemon requires `dev_loss_tmo` to be at least 60 seconds higher than the fencing threshold (`poll-interval * max-failures`).
 - **`polling_interval 5`**: Aligns multipath daemon's path checking interval with the fencing daemon's poll interval.
 - **`fast_io_fail_tmo 5`**: Promotes fast I/O failure detection.
 
