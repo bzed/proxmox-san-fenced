@@ -518,14 +518,20 @@ impl PveSanClient {
 
                 let mut vms = Vec::new();
                 for item in data {
-                    let vmid = item["vmid"]
+                    let vmid_opt = item["vmid"]
                         .as_u64()
                         .or_else(|| item["vmid"].as_str().and_then(|s| s.parse::<u64>().ok()))
                         .or_else(|| item["subdir"].as_u64())
-                        .or_else(|| item["subdir"].as_str().and_then(|s| s.parse::<u64>().ok()))
-                        .ok_or_else(|| {
-                            PveSanError::ListVmError("VMID is missing or not a number".to_string())
-                        })?;
+                        .or_else(|| item["subdir"].as_str().and_then(|s| s.parse::<u64>().ok()));
+                        
+                    let vmid = match vmid_opt {
+                        Some(id) => id,
+                        None => {
+                            log::warn!("Skipping malformed VM entry in pvesh output: {:?}", item);
+                            continue;
+                        }
+                    };
+
                     let status = item["status"].as_str().unwrap_or("unknown").to_string();
 
                     if status == "running" {
