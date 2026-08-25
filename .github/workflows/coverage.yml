@@ -47,21 +47,32 @@ jobs:
                   pkg = parts[0]
                   test_file = parts[1] if len(parts) > 1 else 'lib'
                   
-                  # Map pve-san-fenced root crate vs workspaces
-                  if pkg == 'pve-san-fenced':
-                      prefixes = ['', 'src/']
-                  else:
-                      prefixes = [f'{pkg}/', f'{pkg}/src/']
-                      
-                  possible_paths = [
-                      f'{prefixes[0]}tests/{test_file}.rs',
-                      f'{prefixes[0]}src/{test_file}.rs',
-                      f'{prefixes[0]}src/{test_file}/mod.rs',
+                  # Handle binary tests
+                  if test_file.startswith('bin/'):
+                      if test_file.split('/')[1] == pkg:
+                          test_file = 'main'
+                      else:
+                          test_file = test_file.replace('bin/', 'bin/')
+                          
+                  # Try different prefixes
+                  prefixes = [
+                      '',
+                      f'{pkg}/',
+                      f'tools/{pkg}/',
+                      f'libpve-san/',
                   ]
                   
-                  for p in possible_paths:
-                      if os.path.exists(p):
-                          testcase.set('file', p)
+                  for pfx in prefixes:
+                      possible_paths = [
+                          f'{pfx}tests/{test_file}.rs',
+                          f'{pfx}src/{test_file}.rs',
+                          f'{pfx}src/{test_file}/mod.rs',
+                      ]
+                      for p in possible_paths:
+                          if os.path.exists(p):
+                              testcase.set('file', p)
+                              break
+                      if testcase.get('file'):
                           break
 
           tree.write('target/nextest/ci/junit.xml')
