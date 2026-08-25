@@ -81,7 +81,7 @@ impl Drop for TestContext {
 
 /// Helper to start the mock daemon
 fn start_mockd(ctx: &mut TestContext, file_map: &str) {
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -165,7 +165,7 @@ fn assert_status_file(status_file_path: &std::path::Path, expected_prefix: &str)
 
 /// Helper to start the pve-san-fenced daemon
 fn start_fencer(ctx: &mut TestContext, node_name: &str, extra_args: &[&str]) {
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
     let pvesh_mock_bin = get_bin_path("pvesh-mock");
     let test_data_dir = workspace.join("test-data/pvesh");
@@ -576,7 +576,7 @@ fn test_integration_debug_log_mode() {
     start_mockd(&mut ctx, "show maps json=all_active_running.json");
 
     // Start fencer daemon with debug log mode enabled using env variable PVE_SAN_DEBUG=true
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
     let pvesh_mock_bin = get_bin_path("pvesh-mock");
     let test_data_dir = workspace.join("test-data/pvesh");
@@ -635,7 +635,7 @@ fn test_integration_debug_log_mode() {
 fn test_integration_hanging_multipathd() {
     let mut ctx = TestContext::new("hanging_multipathd", "pve001");
 
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -720,7 +720,7 @@ fn test_integration_hanging_multipathd() {
 fn test_integration_unresponsive_multipathd_connection_timeout() {
     let mut ctx = TestContext::new("unresponsive_multipathd", "pve001");
 
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
 
     let child = Command::new(mockd_bin)
@@ -809,7 +809,7 @@ fn test_integration_unreachable_multipathd() {
 
     // Do NOT start mpath-mockd. The socket file will not exist, making it unreachable.
 
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
     let pvesh_mock_bin = get_bin_path("pvesh-mock");
     let pvesh_test_data = workspace.join("test-data/pvesh");
@@ -945,7 +945,7 @@ fn test_integration_partial_failure_fencing() {
 fn test_integration_discovery_backoff() {
     let mut ctx = TestContext::new("discovery_backoff", "pve001");
 
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     // Start mpath-mockd normally (not needed for this test but for completeness)
     let mockd_bin = get_bin_path("mpath-mockd");
@@ -1236,7 +1236,7 @@ defaults {
     fs::write(&warning_config_path, warning_config_content).unwrap();
 
     // Start mock daemon manually with the warning config mapped
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1337,7 +1337,7 @@ defaults {
     fs::write(&warning_config_path, warning_config_content).unwrap();
 
     // Start mock daemon with healthy maps only
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1398,7 +1398,7 @@ fn test_integration_discovery_timestamp_no_stale() {
     start_mockd(&mut ctx, "show maps json=all_active_running.json");
 
     // Start fencer daemon manually with customized intervals
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
     let pvesh_mock_bin = get_bin_path("pvesh-mock");
     let test_data_dir = workspace.join("test-data/pvesh");
@@ -1443,7 +1443,7 @@ fn test_integration_multipath_config_ok() {
     let mut ctx = TestContext::new("multipath_config_ok", "pve001");
     let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
 
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1495,7 +1495,7 @@ fn test_integration_multipath_config_bad() {
     let mut ctx = TestContext::new("multipath_config_bad", "pve001");
     let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
 
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1547,7 +1547,7 @@ fn test_integration_multipath_config_ok2() {
     let mut ctx = TestContext::new("multipath_config_ok2", "pve001");
     let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
 
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1599,7 +1599,7 @@ fn test_integration_multipath_config_bad2() {
     let mut ctx = TestContext::new("multipath_config_bad2", "pve001");
     let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
 
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1660,7 +1660,7 @@ fn test_integration_disappeared_paths_fencing() {
     fs::create_dir_all(custom_pvesh_dir.join("get_nodes/config")).unwrap();
 
     // Copy lsblk.json so libpve-san can build its mpath_map
-    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     fs::copy(
         workspace.join("test-data/pvesh/lsblk.json"),
         custom_pvesh_dir.join("lsblk.json"),
