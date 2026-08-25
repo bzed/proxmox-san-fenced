@@ -1,2 +1,2 @@
-[profile.ci]
-junit = { path = "ci/junit.xml" }
+[profile.ci.junit]
+path = "junit.xml"
