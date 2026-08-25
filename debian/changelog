@@ -1,3 +1,10 @@
+pve-san-fenced (0.1.12) unstable; urgency=medium
+
+  * [37b3b61] fix: Use 'pvesh get' instead of 'ls' to retrieve running VM status and VMIDs
+  * [874e2b7] fix: Skip pvesh VM list entries that lack a parseable VMID
+
+ -- Bernd Zeimetz <bzed@debian.org>  Tue, 25 Aug 2026 19:13:39 +0200
+
 pve-san-fenced (0.1.11) unstable; urgency=medium
 
   * [e0fa544] docs: Add Proxmox badge to README
