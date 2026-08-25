@@ -1,3 +1,28 @@
+pve-san-fenced (0.1.11) unstable; urgency=medium
+
+  * [e0fa544] docs: Add Proxmox badge to README
+  * [644be43] ci: Update python junit mapper to correctly handle cargo workspace tools/ directory and binary targets
+  * [9b50a0e] ci: Inject physical file paths into nextest JUnit XML for Codecov mapping
+  * [78100f6] ci: Upgrade to codecov-action v5 for coverage and test results
+  * [b7a4999] ci: Configure codecov to ignore mock tools in coverage reports
+  * [7cb5eec] ci: Fix JUnit XML output path in nextest profile
+  * [148fc4e] fix: Revert incorrect global sed replacement that broke integration tests
+  * [92b2a90] ci: Define nextest ci profile for JUnit XML generation
+  * [4bcda08] test: Add extensive negative test coverage for pve-san-fenced startup configuration and status CLI logic
+  * [63f619f] ci: Upload test results to Codecov using cargo-nextest and test-results-action
+  * [51922b3] test: Add exhaustive negative testing for libmultipath error handling paths
+  * [3e026e5] test: Add integration test to pvesh-mock to force binary compilation during cargo test
+  * [a3e19aa] docs: Add CI status, Codecov, and License badges to README
+  * [19d646f] Fix integration tests mock binary resolution for cargo-llvm-cov target directories
+  * [6eacf3d] Update MONITORING.md dev_loss_tmo instructions to match exact threshold boundary
+  * [4e1f4c1] Update README.md dev_loss_tmo instructions to match numeric values support
+  * [5626113] Add Codecov coverage reporting GitHub Action
+  * [fd81401] Add integration test for unreachable multipathd socket
+  * [74f2f79] Fix status file race condition and implement latched fencer for disappearing paths
+  * [3c7e652] feat(config): Support high numeric values for dev_loss_tmo
+
+ -- Bernd Zeimetz <bzed@debian.org>  Tue, 25 Aug 2026 17:01:34 +0200
+
 pve-san-fenced (0.1.10) unstable; urgency=medium
 
   * [6df5f68] Fix clean command
