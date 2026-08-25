@@ -81,7 +81,7 @@ impl Drop for TestContext {
 
 /// Helper to start the mock daemon
 fn start_mockd(ctx: &mut TestContext, file_map: &str) {
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -123,7 +123,7 @@ defaults {
 
 /// Helper to poll and assert the content of the status file via daemon CLI status-query
 fn assert_status_file(status_file_path: &std::path::Path, expected_prefix: &str) {
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
 
     let expected_code = match expected_prefix {
@@ -165,7 +165,7 @@ fn assert_status_file(status_file_path: &std::path::Path, expected_prefix: &str)
 
 /// Helper to start the pve-san-fenced daemon
 fn start_fencer(ctx: &mut TestContext, node_name: &str, extra_args: &[&str]) {
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
     let pvesh_mock_bin = get_bin_path("pvesh-mock");
     let test_data_dir = workspace.join("test-data/pvesh");
@@ -576,7 +576,7 @@ fn test_integration_debug_log_mode() {
     start_mockd(&mut ctx, "show maps json=all_active_running.json");
 
     // Start fencer daemon with debug log mode enabled using env variable PVE_SAN_DEBUG=true
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
     let pvesh_mock_bin = get_bin_path("pvesh-mock");
     let test_data_dir = workspace.join("test-data/pvesh");
@@ -635,7 +635,7 @@ fn test_integration_debug_log_mode() {
 fn test_integration_hanging_multipathd() {
     let mut ctx = TestContext::new("hanging_multipathd", "pve001");
 
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -720,7 +720,7 @@ fn test_integration_hanging_multipathd() {
 fn test_integration_unresponsive_multipathd_connection_timeout() {
     let mut ctx = TestContext::new("unresponsive_multipathd", "pve001");
 
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
 
     let child = Command::new(mockd_bin)
@@ -809,7 +809,7 @@ fn test_integration_unreachable_multipathd() {
 
     // Do NOT start mpath-mockd. The socket file will not exist, making it unreachable.
 
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
     let pvesh_mock_bin = get_bin_path("pvesh-mock");
     let pvesh_test_data = workspace.join("test-data/pvesh");
@@ -945,7 +945,7 @@ fn test_integration_partial_failure_fencing() {
 fn test_integration_discovery_backoff() {
     let mut ctx = TestContext::new("discovery_backoff", "pve001");
 
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     // Start mpath-mockd normally (not needed for this test but for completeness)
     let mockd_bin = get_bin_path("mpath-mockd");
@@ -1112,7 +1112,7 @@ fn test_integration_status_cli_check() {
     let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
 
     // 1. Check with non-existent status file (should exit 3)
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
 
     let output = Command::new(&fencer_bin)
@@ -1236,7 +1236,7 @@ defaults {
     fs::write(&warning_config_path, warning_config_content).unwrap();
 
     // Start mock daemon manually with the warning config mapped
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1337,7 +1337,7 @@ defaults {
     fs::write(&warning_config_path, warning_config_content).unwrap();
 
     // Start mock daemon with healthy maps only
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1398,7 +1398,7 @@ fn test_integration_discovery_timestamp_no_stale() {
     start_mockd(&mut ctx, "show maps json=all_active_running.json");
 
     // Start fencer daemon manually with customized intervals
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
     let pvesh_mock_bin = get_bin_path("pvesh-mock");
     let test_data_dir = workspace.join("test-data/pvesh");
@@ -1443,7 +1443,7 @@ fn test_integration_multipath_config_ok() {
     let mut ctx = TestContext::new("multipath_config_ok", "pve001");
     let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
 
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1495,7 +1495,7 @@ fn test_integration_multipath_config_bad() {
     let mut ctx = TestContext::new("multipath_config_bad", "pve001");
     let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
 
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1547,7 +1547,7 @@ fn test_integration_multipath_config_ok2() {
     let mut ctx = TestContext::new("multipath_config_ok2", "pve001");
     let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
 
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1599,7 +1599,7 @@ fn test_integration_multipath_config_bad2() {
     let mut ctx = TestContext::new("multipath_config_bad2", "pve001");
     let status_file_path = ctx.temp_dir.join("pve-san-fenced.status");
 
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mockd_bin = get_bin_path("mpath-mockd");
     let test_data_dir = workspace.join("test-data/multipathd/show_maps_json");
 
@@ -1660,7 +1660,7 @@ fn test_integration_disappeared_paths_fencing() {
     fs::create_dir_all(custom_pvesh_dir.join("get_nodes/config")).unwrap();
 
     // Copy lsblk.json so libpve-san can build its mpath_map
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     fs::copy(
         workspace.join("test-data/pvesh/lsblk.json"),
         custom_pvesh_dir.join("lsblk.json"),
@@ -1677,7 +1677,7 @@ fn test_integration_disappeared_paths_fencing() {
     ).unwrap();
 
     // Start fencer with custom PVE_SAN_TEST_DATA_DIR
-    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fencer_bin = get_bin_path("pve-san-fenced");
     let pvesh_mock_bin = get_bin_path("pvesh-mock");
     let mut cmd = Command::new(fencer_bin);
@@ -1730,4 +1730,172 @@ fn test_integration_disappeared_paths_fencing() {
         content.starts_with("CRITICAL -"),
         "Fencer should have triggered a reboot despite paths coming back.\nLast status: {content}\nDaemon stderr:\n{daemon_stderr}"
     );
+}
+
+#[test]
+fn test_integration_error_poll_interval_zero() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status-file").arg("/tmp/test_status_poll_0")
+        .arg("--poll-interval").arg("0")
+        .arg("--test-mode")
+        .output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("poll-interval cannot be 0"));
+}
+
+#[test]
+fn test_integration_error_max_failures_zero() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status-file").arg("/tmp/test_status_failures_0")
+        .arg("--max-failures").arg("0")
+        .arg("--test-mode")
+        .output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("max-failures cannot be 0"));
+}
+
+#[test]
+fn test_integration_error_discovery_interval_zero() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status-file").arg("/tmp/test_status_discovery_0")
+        .arg("--discovery-interval").arg("0")
+        .arg("--test-mode")
+        .output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("discovery-interval cannot be 0"));
+}
+
+#[test]
+fn test_integration_error_invalid_node_name() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status-file").arg("/tmp/test_status_node_name")
+        .arg("--node-name").arg("../escaped")
+        .arg("--test-mode")
+        .output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Invalid node name: ../escaped"));
+}
+
+#[test]
+fn test_integration_error_missing_node_dir() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status-file").arg("/tmp/test_status_node_dir")
+        .arg("--node-name").arg("this_node_does_not_exist_123")
+        .arg("--test-mode")
+        .output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("does not exist under"));
+}
+
+#[test]
+fn test_integration_error_test_data_dir_without_test_mode() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status-file").arg("/tmp/test_status_test_data")
+        .env("PVE_SAN_TEST_DATA_DIR", "/tmp")
+        // Note: intentionally excluding --test-mode
+        .output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("PVE_SAN_TEST_DATA_DIR is set but daemon is not running in test/dry-run mode"));
+}
+
+#[test]
+fn test_integration_error_status_file_not_absolute() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status-file").arg("relative/path/status")
+        .arg("--test-mode")
+        .output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Status file path must be absolute: relative/path/status"));
+}
+
+#[test]
+fn test_integration_error_status_file_parent_missing() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status-file").arg("/tmp/non_existent_directory_1234/status")
+        .arg("--test-mode")
+        .output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Parent directory of status file does not exist"));
+}
+
+#[test]
+fn test_integration_status_cli_empty_file() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let status_file = "/tmp/test_status_empty";
+    std::fs::write(status_file, "").unwrap();
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file").arg(status_file)
+        .output().unwrap();
+    assert_eq!(output.status.code(), Some(3));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Status file is empty"));
+    std::fs::remove_file(status_file).unwrap();
+}
+
+#[test]
+fn test_integration_status_cli_badly_formatted() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let status_file = "/tmp/test_status_badly_formatted";
+    std::fs::write(status_file, "FOOBAR - Something broke").unwrap();
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file").arg(status_file)
+        .output().unwrap();
+    assert_eq!(output.status.code(), Some(3));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Badly formatted status file: FOOBAR - Something broke"));
+    std::fs::remove_file(status_file).unwrap();
+}
+
+#[test]
+fn test_integration_status_cli_missing_file() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let status_file = "/tmp/test_status_does_not_exist";
+    let _ = std::fs::remove_file(status_file);
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file").arg(status_file)
+        .output().unwrap();
+    assert_eq!(output.status.code(), Some(3));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Failed to read status file"));
+}
+
+#[test]
+fn test_integration_status_cli_outdated_file() {
+    let fencer_bin = get_bin_path("pve-san-fenced");
+    let status_file = "/tmp/test_status_outdated";
+    std::fs::write(status_file, "OK - Everything is fine").unwrap();
+    
+    // Fake the modification time to be 10 minutes ago
+    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(600);
+    filetime::set_file_mtime(status_file, filetime::FileTime::from_system_time(past)).unwrap();
+    
+    let output = std::process::Command::new(&fencer_bin)
+        .arg("--status")
+        .arg("--status-file").arg(status_file)
+        .arg("--poll-interval").arg("5")
+        .output().unwrap();
+        
+    assert_eq!(output.status.code(), Some(3));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Status file is outdated"));
+    std::fs::remove_file(status_file).unwrap();
 }
