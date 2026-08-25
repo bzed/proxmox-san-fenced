@@ -16,6 +16,18 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::time::Duration;
 
+/// Helper to dynamically find workspace binaries whether running via `cargo test` (target/debug)
+/// or `cargo llvm-cov` (target/llvm-cov-target/debug)
+fn get_bin_path(name: &str) -> std::path::PathBuf {
+    let mut path = std::env::current_exe().expect("Failed to get current executable path");
+    path.pop(); // remove test binary name
+    if path.ends_with("deps") {
+        path.pop();
+    }
+    path.join(name)
+}
+
+
 pub mod config;
 pub mod status;
 
@@ -529,7 +541,7 @@ mod tests {
 
     /// Get the path to the pvesh-mock binary
     fn pvesh_mock_path() -> PathBuf {
-        workspace_root().join("target/debug/pvesh-mock")
+        get_bin_path("pvesh-mock")
     }
 
     #[test]

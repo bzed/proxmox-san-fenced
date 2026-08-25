@@ -17,6 +17,18 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+/// Helper to dynamically find workspace binaries whether running via `cargo test` (target/debug)
+/// or `cargo llvm-cov` (target/llvm-cov-target/debug)
+fn get_bin_path(name: &str) -> std::path::PathBuf {
+    let mut path = std::env::current_exe().expect("Failed to get current executable path");
+    path.pop(); // remove test binary name
+    if path.ends_with("deps") {
+        path.pop();
+    }
+    path.join(name)
+}
+
+
 /// Helper to get the workspace root directory
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -27,7 +39,7 @@ fn workspace_root() -> PathBuf {
 
 /// Get the path to the mpath-mockd binary
 fn mockd_path() -> PathBuf {
-    workspace_root().join("target/debug/mpath-mockd")
+    get_bin_path("mpath-mockd")
 }
 
 /// Get the path to the test data directory
