@@ -31,6 +31,42 @@ jobs:
       - name: Generate test results
         run: cargo nextest run --all-features --workspace --profile ci
 
+      - name: Inject file paths into JUnit XML for Codecov
+        run: |
+          python3 -c "
+          import xml.etree.ElementTree as ET
+          import os
+
+          tree = ET.parse('target/nextest/ci/junit.xml')
+          root = tree.getroot()
+
+          for testcase in root.iter('testcase'):
+              classname = testcase.get('classname')
+              if classname:
+                  parts = classname.split('::')
+                  pkg = parts[0]
+                  test_file = parts[1] if len(parts) > 1 else 'lib'
+                  
+                  # Map pve-san-fenced root crate vs workspaces
+                  if pkg == 'pve-san-fenced':
+                      prefixes = ['', 'src/']
+                  else:
+                      prefixes = [f'{pkg}/', f'{pkg}/src/']
+                      
+                  possible_paths = [
+                      f'{prefixes[0]}tests/{test_file}.rs',
+                      f'{prefixes[0]}src/{test_file}.rs',
+                      f'{prefixes[0]}src/{test_file}/mod.rs',
+                  ]
+                  
+                  for p in possible_paths:
+                      if os.path.exists(p):
+                          testcase.set('file', p)
+                          break
+
+          tree.write('target/nextest/ci/junit.xml')
+          "
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
