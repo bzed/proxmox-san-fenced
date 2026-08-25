@@ -512,7 +512,7 @@ impl PveSanClient {
                 let node = &self.config.node;
                 let path = format!("/nodes/{node}/qemu");
 
-                let json_output = self.run_pvesh_ls(&path).await?;
+                let json_output = self.run_pvesh_get(&path).await?;
                 let data: Vec<serde_json::Value> = serde_json::from_str(&json_output)
                     .map_err(|e| PveSanError::JsonParseError(e.to_string()))?;
 

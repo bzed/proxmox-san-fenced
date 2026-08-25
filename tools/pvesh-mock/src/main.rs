@@ -136,7 +136,7 @@ fn main() {
     writeln!(f, ">>> command: {:?}, path_parts: {:?}", cli.command, path_parts).unwrap();
 
     let response = match (cli.command, &path_parts[..]) {
-        (CommandType::Ls, ["nodes", node, "qemu"]) => {
+        (CommandType::Ls, ["nodes", node, "qemu"]) | (CommandType::Get, ["nodes", node, "qemu"]) => {
             // List VMs for a node
             handle_ls_nodes_qemu(node, &test_data_dir)
         }
