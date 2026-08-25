@@ -364,3 +364,135 @@ fn test_mock_server_hanging_socket() {
     let err = result.err().unwrap();
     assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
 }
+
+#[test]
+fn test_send_command_on_fd_invalid() {
+    let result = libmultipath::MultipathConnection::send_command_on_fd(-1, "test", None);
+    assert!(result.is_err());
+    assert_eq!(result.err().unwrap().kind(), std::io::ErrorKind::InvalidInput);
+}
+
+#[test]
+fn test_send_command_no_reply() {
+    let socket_path = run_custom_mock_server("no_reply", |stream| {
+        let cmd = read_command(&stream);
+        assert_eq!(cmd.trim_end_matches('\0'), "just do it");
+        // Don't write a reply, mimicking fire-and-forget.
+    });
+    std::thread::sleep(Duration::from_millis(50));
+    let conn = libmultipath::MultipathConnection::with_socket(&socket_path).unwrap();
+    let res = conn.send_command_no_reply("just do it");
+    assert!(res.is_ok());
+}
+
+#[test]
+fn test_unexpected_eof_on_length() {
+    let socket_path = run_custom_mock_server("eof_len", |stream| {
+        let _cmd = read_command(&stream);
+        // Abruptly close connection instead of sending length
+        drop(stream);
+    });
+    std::thread::sleep(Duration::from_millis(50));
+    let res = libmultipath::send_multipath_command_to_socket(&socket_path, "show maps json");
+    assert!(res.is_err());
+    assert_eq!(res.err().unwrap().kind(), std::io::ErrorKind::ConnectionReset);
+}
+
+#[test]
+fn test_unexpected_eof_on_data() {
+    let socket_path = run_custom_mock_server("eof_data", |mut stream| {
+        let _cmd = read_command(&stream);
+        let len = 100u64;
+        stream.write_all(&len.to_le_bytes()).unwrap();
+        // Send fewer bytes than promised, then close
+        stream.write_all(b"1234567890").unwrap();
+        drop(stream);
+    });
+    std::thread::sleep(Duration::from_millis(50));
+    let res = libmultipath::send_multipath_command_to_socket(&socket_path, "show maps json");
+    assert!(res.is_err());
+    assert_eq!(res.err().unwrap().kind(), std::io::ErrorKind::ConnectionReset);
+}
+
+#[test]
+fn test_command_with_null_byte() {
+    let socket_path = run_custom_mock_server("null_byte", |_stream| {});
+    std::thread::sleep(Duration::from_millis(50));
+    let res = libmultipath::send_multipath_command_to_socket(&socket_path, "show\0maps");
+    assert!(res.is_err());
+    assert_eq!(res.err().unwrap().kind(), std::io::ErrorKind::InvalidInput);
+}
+
+
+
+#[test]
+fn test_send_command_on_fd_valid() {
+    use std::os::fd::AsRawFd;
+    let socket_path = run_custom_mock_server("valid_fd", |mut stream| {
+        let cmd = read_command(&stream);
+        assert_eq!(cmd.trim_end_matches('\0'), "test fd");
+        let reply = "ok";
+        let reply_len = (reply.len() + 1) as u64;
+        stream.write_all(&reply_len.to_le_bytes()).unwrap();
+        stream.write_all(reply.as_bytes()).unwrap();
+        stream.write_all(&[0u8]).unwrap();
+    });
+    std::thread::sleep(Duration::from_millis(50));
+    
+    // Connect manually
+    let abstract_name = socket_path.strip_prefix('@').unwrap();
+    let addr = SocketAddr::from_abstract_name(abstract_name.as_bytes()).unwrap();
+    let stream = UnixStream::connect_addr(&addr).unwrap();
+    
+    let fd = stream.as_raw_fd();
+    let res = libmultipath::MultipathConnection::send_command_on_fd(fd, "test fd", None);
+    assert!(res.is_ok());
+    assert_eq!(res.unwrap(), "ok");
+}
+
+#[test]
+fn test_zero_length_reply() {
+    let socket_path = run_custom_mock_server("zero_len", |mut stream| {
+        let _cmd = read_command(&stream);
+        let len = 0u64;
+        stream.write_all(&len.to_le_bytes()).unwrap();
+    });
+    std::thread::sleep(Duration::from_millis(50));
+    let res = libmultipath::send_multipath_command_to_socket(&socket_path, "show maps json");
+    assert!(res.is_err());
+    let err = res.err().unwrap();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("Invalid reply length"));
+}
+
+#[test]
+fn test_invalid_abstract_socket_address() {
+    // 110 characters, exceeding the 108 byte limit for abstract sockets
+    let socket_path = format!("@{}", "a".repeat(110));
+    let res = libmultipath::MultipathConnection::with_socket(&socket_path);
+    assert!(res.is_err());
+    let err = res.err().unwrap();
+    assert_eq!(err.to_string(), "Invalid socket address");
+}
+
+#[test]
+fn test_mock_server_hanging_socket_length() {
+    let socket_path = run_custom_mock_server("hang_len", |stream| {
+        let _cmd = read_command(&stream);
+        // Do not write anything, just hang
+        std::thread::sleep(Duration::from_secs(3600));
+    });
+
+    std::thread::sleep(Duration::from_millis(50));
+
+    let result = libmultipath::send_multipath_command_to_socket_with_timeout(
+        &socket_path,
+        "show maps json",
+        /*timeout_ms*/ 50,
+    );
+
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+    assert!(err.to_string().contains("Timeout waiting for reply"));
+}
