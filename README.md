@@ -4,6 +4,7 @@
 [![Coverage Workflow](https://github.com/bzed/proxmox-san-fenced/actions/workflows/coverage.yml/badge.svg?branch=main)](https://github.com/bzed/proxmox-san-fenced/actions/workflows/coverage.yml)
 [![codecov](https://codecov.io/gh/bzed/proxmox-san-fenced/branch/main/graph/badge.svg)](https://codecov.io/gh/bzed/proxmox-san-fenced)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+![Proxmox](https://img.shields.io/badge/Proxmox-E57000?style=for-the-badge&logo=proxmox&logoColor=white)
 
 A SAN fencing daemon for Proxmox VE (PVE) designed to prevent split-brain scenarios and storage corruption when a hypervisor node loses all connectivity to active SAN/Fibre Channel (FC) multipath devices.
 
