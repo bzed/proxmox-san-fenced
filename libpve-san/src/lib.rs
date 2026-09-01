@@ -523,7 +523,7 @@ impl PveSanClient {
                         .or_else(|| item["vmid"].as_str().and_then(|s| s.parse::<u64>().ok()))
                         .or_else(|| item["subdir"].as_u64())
                         .or_else(|| item["subdir"].as_str().and_then(|s| s.parse::<u64>().ok()));
-                        
+
                     let vmid = match vmid_opt {
                         Some(id) => id,
                         None => {
@@ -791,10 +791,6 @@ impl PveSanClient {
 
     /// Run pvesh ls command to list resources at the given path
     #[tracing::instrument(skip(self))]
-    async fn run_pvesh_ls(&self, path: &str) -> PveSanResult<String> {
-        self.run_pvesh(&["ls", path, "--output-format", "json"])
-            .await
-    }
 
     /// Run pvesh get command to retrieve a specific resource
     #[tracing::instrument(skip(self))]

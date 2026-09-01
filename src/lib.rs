@@ -18,6 +18,7 @@ use std::time::Duration;
 
 /// Helper to dynamically find workspace binaries whether running via `cargo test` (target/debug)
 /// or `cargo llvm-cov` (target/llvm-cov-target/debug)
+#[cfg(test)]
 fn get_bin_path(name: &str) -> std::path::PathBuf {
     let mut path = std::env::current_exe().expect("Failed to get current executable path");
     path.pop(); // remove test binary name
@@ -26,7 +27,6 @@ fn get_bin_path(name: &str) -> std::path::PathBuf {
     }
     path.join(name)
 }
-
 
 pub mod config;
 pub mod status;
@@ -373,16 +373,21 @@ impl Fencer {
         debug!("Monitored maps subset: {:?}", monitored_maps);
 
         for map in &monitored_maps {
-            let total_paths = map.path_groups.as_ref().map(|groups| {
-                groups.iter().map(|g| g.paths.as_ref().map_or(0, |p| p.len())).sum::<usize>()
-            }).unwrap_or(0);
+            let total_paths = map
+                .path_groups
+                .as_ref()
+                .map(|groups| {
+                    groups
+                        .iter()
+                        .map(|g| g.paths.as_ref().map_or(0, |p| p.len()))
+                        .sum::<usize>()
+                })
+                .unwrap_or(0);
 
             if total_paths > 0 {
                 self.had_working_paths.insert(map.name.clone());
-            } else if total_paths == 0 {
-                if self.had_working_paths.contains(&map.name) {
-                    self.permanently_broken_luns.insert(map.name.clone());
-                }
+            } else if total_paths == 0 && self.had_working_paths.contains(&map.name) {
+                self.permanently_broken_luns.insert(map.name.clone());
             }
 
             let name = &map.name;

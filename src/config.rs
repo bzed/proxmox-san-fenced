@@ -88,6 +88,7 @@ pub struct DeviceConfig {
     pub product: Option<String>,
     pub dev_loss_tmo: Option<String>,
     pub no_path_retry: Option<String>,
+    pub polling_interval: Option<u64>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -217,6 +218,7 @@ fn parse_block(iter: &mut std::iter::Peekable<impl Iterator<Item = Token>>) -> D
                             "product" => block.product = Some(val),
                             "dev_loss_tmo" => block.dev_loss_tmo = Some(val),
                             "no_path_retry" => block.no_path_retry = Some(val),
+                            "polling_interval" => block.polling_interval = val.parse::<u64>().ok(),
                             _ => {}
                         }
                     }
@@ -260,6 +262,9 @@ pub fn get_merged_config(config: &MultipathConfig, vendor: &str, product: &str) 
             if device.no_path_retry.is_some() {
                 merged.no_path_retry = device.no_path_retry.clone();
             }
+            if device.polling_interval.is_some() {
+                merged.polling_interval = device.polling_interval;
+            }
         }
     }
 
@@ -268,6 +273,9 @@ pub fn get_merged_config(config: &MultipathConfig, vendor: &str, product: &str) 
     }
     if config.overrides.no_path_retry.is_some() {
         merged.no_path_retry = config.overrides.no_path_retry.clone();
+    }
+    if config.overrides.polling_interval.is_some() {
+        merged.polling_interval = config.overrides.polling_interval;
     }
 
     merged
@@ -308,6 +316,39 @@ pub fn check_maps_config(
 
         let mut map_warnings = Vec::new();
 
+        let polling_interval = merged.polling_interval.unwrap_or(5);
+        let min_queue_time = fencing_time_sec + 15;
+        let mut queue_time_sec: Option<u64> = None;
+
+        match merged.no_path_retry.as_deref() {
+            Some("queue") => {}
+            Some(val) => {
+                if let Ok(num) = val.parse::<u64>() {
+                    if num == 0 {
+                        map_warnings.push("no_path_retry is set to '0' (queueing disabled). Expected 'queue' or a safe high numeric value".to_string());
+                    } else {
+                        let qt = num * polling_interval;
+                        queue_time_sec = Some(qt);
+                        if qt < min_queue_time {
+                            map_warnings.push(format!(
+                                "no_path_retry is set to '{val}', yielding a queue time of {qt}s (with {polling_interval}s polling_interval). This is too low (expected >= {min_queue_time}s to allow fencing)"
+                            ));
+                        }
+                    }
+                } else if val == "fail" {
+                    map_warnings.push("no_path_retry is set to 'fail' (queueing disabled). Expected 'queue' or a safe high numeric value".to_string());
+                } else {
+                    map_warnings.push(format!(
+                        "no_path_retry is set to '{val}' instead of 'queue' or a safe high numeric value"
+                    ));
+                }
+            }
+            None => map_warnings.push(
+                "no_path_retry is not configured (expected 'queue' or a safe high numeric value)"
+                    .to_string(),
+            ),
+        }
+
         let min_dev_loss_tmo = fencing_time_sec + 60;
         match merged.dev_loss_tmo.as_deref() {
             Some("infinity") => {}
@@ -317,6 +358,13 @@ pub fn check_maps_config(
                         map_warnings.push(format!(
                             "dev_loss_tmo is set to '{val}' which is too low (expected 'infinity' or >= {min_dev_loss_tmo})"
                         ));
+                    }
+                    if let Some(qt) = queue_time_sec {
+                        if num <= qt {
+                            map_warnings.push(format!(
+                                "dev_loss_tmo ({num}s) must be strictly greater than no_path_retry queue time ({qt}s) to avoid deadlocks"
+                            ));
+                        }
                     }
                 } else {
                     map_warnings.push(format!(
@@ -328,16 +376,6 @@ pub fn check_maps_config(
                 "dev_loss_tmo is not configured (expected 'infinity' or a safe high number)"
                     .to_string(),
             ),
-        }
-
-        match merged.no_path_retry.as_deref() {
-            Some("queue") => {}
-            Some(val) => map_warnings.push(format!(
-                "no_path_retry is set to '{val}' instead of 'queue'"
-            )),
-            None => {
-                map_warnings.push("no_path_retry is not configured (expected queue)".to_string())
-            }
         }
 
         if !map_warnings.is_empty() {
@@ -474,6 +512,7 @@ overrides {
             product: None,
             dev_loss_tmo: Some("120".to_string()),
             no_path_retry: Some("queue".to_string()),
+            polling_interval: None,
         };
         assert_eq!(config.defaults, expected_defaults);
 
@@ -483,6 +522,7 @@ overrides {
             product: None,
             dev_loss_tmo: Some("infinity".to_string()),
             no_path_retry: None,
+            polling_interval: None,
         };
         assert_eq!(config.overrides, expected_overrides);
 
@@ -493,7 +533,48 @@ overrides {
             product: None,
             dev_loss_tmo: Some("infinity".to_string()),
             no_path_retry: Some("queue".to_string()),
+            polling_interval: None,
         };
         assert_eq!(merged, expected_merged);
+    }
+
+    #[test]
+    fn test_parse_multipath_config_numeric_no_path_retry() {
+        let config_str = r#"
+defaults {
+    no_path_retry 12
+    dev_loss_tmo 120
+}
+"#;
+        let config = parse_multipath_config(config_str);
+
+        let expected_defaults = DeviceConfig {
+            vendor: None,
+            product: None,
+            dev_loss_tmo: Some("120".to_string()),
+            no_path_retry: Some("12".to_string()),
+            polling_interval: None,
+        };
+        assert_eq!(config.defaults, expected_defaults);
+    }
+
+    #[test]
+    fn test_parse_multipath_config_numeric_polling_interval() {
+        let config_str = r#"
+defaults {
+    no_path_retry 12
+    polling_interval 10
+}
+"#;
+        let config = parse_multipath_config(config_str);
+
+        let expected_defaults = DeviceConfig {
+            vendor: None,
+            product: None,
+            dev_loss_tmo: None,
+            no_path_retry: Some("12".to_string()),
+            polling_interval: Some(10),
+        };
+        assert_eq!(config.defaults, expected_defaults);
     }
 }
