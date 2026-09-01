@@ -33,11 +33,13 @@ For the fencing daemon to operate safely and reliably, `multipathd` must be conf
 
 ```text
 defaults {
-    # Keep queueing I/O when all paths are down. The fencing daemon will take
-    # care of rebooting/fencing if recovery fails.
-    no_path_retry "queue"
+    # Keep queueing I/O when all paths are down, but eventually fail
+    # to avoid infinite D-state hangs. Must yield a total queue time
+    # (no_path_retry * polling_interval) strictly greater than the fencing time.
+    no_path_retry 12
 
     # Prevent multipathd from removing block devices before fencing can occur.
+    # Must be strictly greater than the total queue time (no_path_retry * polling_interval).
     # Safe values are "infinity" or any number >= (poll-interval * max-failures) + 60
     dev_loss_tmo "infinity"
 
@@ -47,8 +49,8 @@ defaults {
 }
 ```
 
-- **`no_path_retry "queue"`**: Keeps I/O queued when all paths are lost. This allows the fencing daemon time to monitor path state and decide whether to fence the node. If set to `fail`, I/O fails immediately, potentially causing VM file systems to switch to read-only before fencing occurs.
-- **`dev_loss_tmo "infinity"`**: Prevents `multipathd` from deleting the device mapper mapping after a timeout. If the device was deleted prematurely, the VM could not recover even if paths are restored, and the daemon would lose its ability to track the device. While `"infinity"` is the safest default, numeric values are supported (and sometimes preferred to allow safe device removal) as long as they are high enough not to interfere with the fencing timeout. The daemon requires `dev_loss_tmo` to be at least 60 seconds higher than the fencing threshold (`poll-interval * max-failures`).
+- **`no_path_retry 12`**: Keeps I/O queued when all paths are lost for a calculated period (e.g., 12 retries * 5s interval = 60 seconds). This allows the fencing daemon time to safely monitor the path state and reboot the node (which defaults to 30s) *before* I/O fails. It is **highly recommended** to use a numeric value instead of `"queue"`. Using `"queue"` instructs the kernel to queue indefinitely, which can cause unkillable D-state process deadlocks if the node fails to reboot. If set to `fail`, I/O fails immediately, causing VM file systems to immediately crash or switch to read-only before fencing occurs.
+- **`dev_loss_tmo "infinity"`**: Prevents `multipathd` from deleting the device mapper mapping after a timeout. If the device was deleted prematurely, the VM could not recover even if paths are restored, and the daemon would lose its ability to track the device. While `"infinity"` is the safest default, numeric values are supported as long as they are strictly greater than the total queue time. The daemon requires `dev_loss_tmo` to be at least 60 seconds higher than the fencing threshold (`poll-interval * max-failures`).
 - **`polling_interval 5`**: Aligns multipath daemon's path checking interval with the fencing daemon's poll interval.
 - **`fast_io_fail_tmo 5`**: Promotes fast I/O failure detection.
 

@@ -100,7 +100,7 @@ section of
 .RS
 .nf
 defaults {
-    no_path_retry "queue"
+    no_path_retry 12
     dev_loss_tmo "infinity"
     polling_interval 5
     fast_io_fail_tmo 5
@@ -109,8 +109,8 @@ defaults {
 .RE
 .PP
 .TP
-.BI no_path_retry " queue"
-Keeps I/O queued when all paths are lost. This allows the fencing daemon time to monitor path state and decide whether to fence the node. If set to \fBfail\fR, I/O fails immediately, potentially causing VM file systems to switch to read-only before fencing occurs.
+.BI no_path_retry " 12"
+Keeps I/O queued when all paths are lost for a calculated period (e.g., 12 retries * 5s interval = 60 seconds). This allows the fencing daemon time to safely monitor the path state and reboot the node *before* I/O fails. It is \fBhighly recommended\fR to use a numeric value instead of \fBqueue\fR. Using \fBqueue\fR instructs the kernel to queue indefinitely, which can cause unkillable D-state process deadlocks if the node fails to reboot. If set to \fBfail\fR, I/O fails immediately, causing VM file systems to switch to read-only before fencing occurs.
 .TP
 .BI dev_loss_tmo " infinity"
 Prevents \fBmultipathd\fR from deleting the device mapper mapping after a timeout. If the device was deleted, the VM could not recover even if paths are restored, and the daemon would lose its ability to track the device.
