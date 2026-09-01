@@ -285,6 +285,74 @@ use crate::MultipathMap;
 use log::warn;
 use std::collections::HashSet;
 
+pub fn validate_merged_device_config(merged: &DeviceConfig, fencing_time_sec: u64) -> Vec<String> {
+    let mut map_warnings = Vec::new();
+
+    let polling_interval = merged.polling_interval.unwrap_or(5);
+    let min_queue_time = fencing_time_sec + 15;
+    let mut queue_time_sec: Option<u64> = None;
+
+    match merged.no_path_retry.as_deref() {
+        Some("queue") => {}
+        Some(val) => {
+            if let Ok(num) = val.parse::<u64>() {
+                if num == 0 {
+                    map_warnings.push("no_path_retry is set to '0' (queueing disabled). Expected 'queue' or a safe high numeric value".to_string());
+                } else {
+                    let qt = num * polling_interval;
+                    queue_time_sec = Some(qt);
+                    if qt < min_queue_time {
+                        map_warnings.push(format!(
+                            "no_path_retry is set to '{val}', yielding a queue time of {qt}s (with {polling_interval}s polling_interval). This is too low (expected >= {min_queue_time}s to allow fencing)"
+                        ));
+                    }
+                }
+            } else if val == "fail" {
+                map_warnings.push("no_path_retry is set to 'fail' (queueing disabled). Expected 'queue' or a safe high numeric value".to_string());
+            } else {
+                map_warnings.push(format!(
+                    "no_path_retry is set to '{val}' instead of 'queue' or a safe high numeric value"
+                ));
+            }
+        }
+        None => map_warnings.push(
+            "no_path_retry is not configured (expected 'queue' or a safe high numeric value)"
+                .to_string(),
+        ),
+    }
+
+    let min_dev_loss_tmo = fencing_time_sec + 60;
+    match merged.dev_loss_tmo.as_deref() {
+        Some("infinity") => {}
+        Some(val) => {
+            if let Ok(num) = val.parse::<u64>() {
+                if num < min_dev_loss_tmo {
+                    map_warnings.push(format!(
+                        "dev_loss_tmo is set to '{val}' which is too low (expected 'infinity' or >= {min_dev_loss_tmo})"
+                    ));
+                }
+                if let Some(qt) = queue_time_sec {
+                    if num <= qt {
+                        map_warnings.push(format!(
+                            "dev_loss_tmo ({num}s) must be strictly greater than no_path_retry queue time ({qt}s) to avoid deadlocks"
+                        ));
+                    }
+                }
+            } else {
+                map_warnings.push(format!(
+                    "dev_loss_tmo is set to '{val}' instead of 'infinity' or a safe high number"
+                ));
+            }
+        }
+        None => map_warnings.push(
+            "dev_loss_tmo is not configured (expected 'infinity' or a safe high number)"
+                .to_string(),
+        ),
+    }
+
+    map_warnings
+}
+
 pub fn check_maps_config(
     maps: &[MultipathMap],
     active_luns: &HashSet<String>,
@@ -314,70 +382,7 @@ pub fn check_maps_config(
 
         let merged = get_merged_config(&parsed_config, vendor, product);
 
-        let mut map_warnings = Vec::new();
-
-        let polling_interval = merged.polling_interval.unwrap_or(5);
-        let min_queue_time = fencing_time_sec + 15;
-        let mut queue_time_sec: Option<u64> = None;
-
-        match merged.no_path_retry.as_deref() {
-            Some("queue") => {}
-            Some(val) => {
-                if let Ok(num) = val.parse::<u64>() {
-                    if num == 0 {
-                        map_warnings.push("no_path_retry is set to '0' (queueing disabled). Expected 'queue' or a safe high numeric value".to_string());
-                    } else {
-                        let qt = num * polling_interval;
-                        queue_time_sec = Some(qt);
-                        if qt < min_queue_time {
-                            map_warnings.push(format!(
-                                "no_path_retry is set to '{val}', yielding a queue time of {qt}s (with {polling_interval}s polling_interval). This is too low (expected >= {min_queue_time}s to allow fencing)"
-                            ));
-                        }
-                    }
-                } else if val == "fail" {
-                    map_warnings.push("no_path_retry is set to 'fail' (queueing disabled). Expected 'queue' or a safe high numeric value".to_string());
-                } else {
-                    map_warnings.push(format!(
-                        "no_path_retry is set to '{val}' instead of 'queue' or a safe high numeric value"
-                    ));
-                }
-            }
-            None => map_warnings.push(
-                "no_path_retry is not configured (expected 'queue' or a safe high numeric value)"
-                    .to_string(),
-            ),
-        }
-
-        let min_dev_loss_tmo = fencing_time_sec + 60;
-        match merged.dev_loss_tmo.as_deref() {
-            Some("infinity") => {}
-            Some(val) => {
-                if let Ok(num) = val.parse::<u64>() {
-                    if num < min_dev_loss_tmo {
-                        map_warnings.push(format!(
-                            "dev_loss_tmo is set to '{val}' which is too low (expected 'infinity' or >= {min_dev_loss_tmo})"
-                        ));
-                    }
-                    if let Some(qt) = queue_time_sec {
-                        if num <= qt {
-                            map_warnings.push(format!(
-                                "dev_loss_tmo ({num}s) must be strictly greater than no_path_retry queue time ({qt}s) to avoid deadlocks"
-                            ));
-                        }
-                    }
-                } else {
-                    map_warnings.push(format!(
-                        "dev_loss_tmo is set to '{val}' instead of 'infinity' or a safe high number"
-                    ));
-                }
-            }
-            None => map_warnings.push(
-                "dev_loss_tmo is not configured (expected 'infinity' or a safe high number)"
-                    .to_string(),
-            ),
-        }
-
+        let map_warnings = validate_merged_device_config(&merged, fencing_time_sec);
         if !map_warnings.is_empty() {
             all_warnings.push(format!(
                 "Map {} (vendor: {}, product: {}): {}",
@@ -576,5 +581,87 @@ defaults {
             polling_interval: Some(10),
         };
         assert_eq!(config.defaults, expected_defaults);
+    }
+
+    #[test]
+    fn test_validate_merged_device_config() {
+        let fencing_time_sec = 30; // min_queue_time = 45, min_dev_loss_tmo = 90
+
+        // Test: Valid numeric no_path_retry and valid infinity dev_loss_tmo
+        let mut config = DeviceConfig {
+            vendor: None,
+            product: None,
+            dev_loss_tmo: Some("infinity".to_string()),
+            no_path_retry: Some("12".to_string()), // 12 * 5 = 60s (>= 45s)
+            polling_interval: Some(5),
+        };
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings.is_empty());
+
+        // Test: Valid numeric dev_loss_tmo strictly greater than queue time
+        config.dev_loss_tmo = Some("90".to_string());
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings.is_empty());
+
+        // Test: Invalid no_path_retry = 0
+        config.no_path_retry = Some("0".to_string());
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings.iter().any(|w| w.contains("queueing disabled")));
+
+        // Test: Invalid no_path_retry = fail
+        config.no_path_retry = Some("fail".to_string());
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings.iter().any(|w| w.contains("queueing disabled")));
+
+        // Test: Invalid no_path_retry string
+        config.no_path_retry = Some("invalid".to_string());
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("instead of 'queue' or a safe high numeric value")));
+
+        // Test: Valid queue, invalid dev_loss_tmo string
+        config.no_path_retry = Some("queue".to_string());
+        config.dev_loss_tmo = Some("invalid".to_string());
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("instead of 'infinity' or a safe high number")));
+
+        // Test: Numeric dev_loss_tmo too low (< 90)
+        config.dev_loss_tmo = Some("80".to_string());
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings.iter().any(|w| w.contains("which is too low")));
+
+        // Test: Queue time too low (< 45)
+        config.dev_loss_tmo = Some("infinity".to_string());
+        config.no_path_retry = Some("8".to_string()); // 8 * 5 = 40s
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("yielding a queue time of 40s")));
+
+        // Test: dev_loss_tmo not strictly greater than queue time
+        config.no_path_retry = Some("20".to_string()); // 20 * 5 = 100s
+        config.dev_loss_tmo = Some("100".to_string()); // 100 <= 100
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("must be strictly greater than")));
+
+        // Test: missing dev_loss_tmo
+        config.dev_loss_tmo = None;
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("dev_loss_tmo is not configured")));
+
+        // Test: missing no_path_retry
+        config.no_path_retry = None;
+        config.dev_loss_tmo = Some("infinity".to_string());
+        let warnings = validate_merged_device_config(&config, fencing_time_sec);
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("no_path_retry is not configured")));
     }
 }
