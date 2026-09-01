@@ -27,7 +27,6 @@ fn get_bin_path(name: &str) -> std::path::PathBuf {
     path.join(name)
 }
 
-
 struct TestContext {
     mock_daemon: Option<Child>,
     target_daemon: Option<Child>,
@@ -1664,17 +1663,20 @@ fn test_integration_disappeared_paths_fencing() {
     fs::copy(
         workspace.join("test-data/pvesh/lsblk.json"),
         custom_pvesh_dir.join("lsblk.json"),
-    ).unwrap();
+    )
+    .unwrap();
 
     // Create a node with only 1 VM that uses mpatha
     fs::write(
         custom_pvesh_dir.join("get_nodes/pve001_qemu.json"),
         r#"[{"name":"test-vm","pid":1234,"status":"running","vmid":100}]"#,
-    ).unwrap();
+    )
+    .unwrap();
     fs::write(
         custom_pvesh_dir.join("get_nodes/config/100.json"),
         r#"{"scsi0":"/dev/mapper/mpatha,size=10G"}"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Start fencer with custom PVE_SAN_TEST_DATA_DIR
     let _workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -1687,10 +1689,14 @@ fn test_integration_disappeared_paths_fencing() {
         .arg(&ctx.socket_path)
         .arg("--pvesh-command")
         .arg(pvesh_mock_bin)
-        .arg("--poll-interval").arg("1")
-        .arg("--discovery-interval").arg("10")
-        .arg("--max-failures").arg("4")
-        .arg("--status-file").arg(&status_file_path);
+        .arg("--poll-interval")
+        .arg("1")
+        .arg("--discovery-interval")
+        .arg("10")
+        .arg("--max-failures")
+        .arg("4")
+        .arg("--status-file")
+        .arg(&status_file_path);
 
     cmd.env("PVE_SAN_TEST_DATA_DIR", custom_pvesh_dir)
         .env("PVE_SAN_SYS_NODES_DIR", ctx.temp_dir.join("nodes"))
@@ -1736,10 +1742,13 @@ fn test_integration_disappeared_paths_fencing() {
 fn test_integration_error_poll_interval_zero() {
     let fencer_bin = get_bin_path("pve-san-fenced");
     let output = std::process::Command::new(&fencer_bin)
-        .arg("--status-file").arg("/tmp/test_status_poll_0")
-        .arg("--poll-interval").arg("0")
+        .arg("--status-file")
+        .arg("/tmp/test_status_poll_0")
+        .arg("--poll-interval")
+        .arg("0")
         .arg("--test-mode")
-        .output().unwrap();
+        .output()
+        .unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("poll-interval cannot be 0"));
@@ -1749,10 +1758,13 @@ fn test_integration_error_poll_interval_zero() {
 fn test_integration_error_max_failures_zero() {
     let fencer_bin = get_bin_path("pve-san-fenced");
     let output = std::process::Command::new(&fencer_bin)
-        .arg("--status-file").arg("/tmp/test_status_failures_0")
-        .arg("--max-failures").arg("0")
+        .arg("--status-file")
+        .arg("/tmp/test_status_failures_0")
+        .arg("--max-failures")
+        .arg("0")
         .arg("--test-mode")
-        .output().unwrap();
+        .output()
+        .unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("max-failures cannot be 0"));
@@ -1762,10 +1774,13 @@ fn test_integration_error_max_failures_zero() {
 fn test_integration_error_discovery_interval_zero() {
     let fencer_bin = get_bin_path("pve-san-fenced");
     let output = std::process::Command::new(&fencer_bin)
-        .arg("--status-file").arg("/tmp/test_status_discovery_0")
-        .arg("--discovery-interval").arg("0")
+        .arg("--status-file")
+        .arg("/tmp/test_status_discovery_0")
+        .arg("--discovery-interval")
+        .arg("0")
         .arg("--test-mode")
-        .output().unwrap();
+        .output()
+        .unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("discovery-interval cannot be 0"));
@@ -1775,10 +1790,13 @@ fn test_integration_error_discovery_interval_zero() {
 fn test_integration_error_invalid_node_name() {
     let fencer_bin = get_bin_path("pve-san-fenced");
     let output = std::process::Command::new(&fencer_bin)
-        .arg("--status-file").arg("/tmp/test_status_node_name")
-        .arg("--node-name").arg("../escaped")
+        .arg("--status-file")
+        .arg("/tmp/test_status_node_name")
+        .arg("--node-name")
+        .arg("../escaped")
         .arg("--test-mode")
-        .output().unwrap();
+        .output()
+        .unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Invalid node name: ../escaped"));
@@ -1788,10 +1806,13 @@ fn test_integration_error_invalid_node_name() {
 fn test_integration_error_missing_node_dir() {
     let fencer_bin = get_bin_path("pve-san-fenced");
     let output = std::process::Command::new(&fencer_bin)
-        .arg("--status-file").arg("/tmp/test_status_node_dir")
-        .arg("--node-name").arg("this_node_does_not_exist_123")
+        .arg("--status-file")
+        .arg("/tmp/test_status_node_dir")
+        .arg("--node-name")
+        .arg("this_node_does_not_exist_123")
         .arg("--test-mode")
-        .output().unwrap();
+        .output()
+        .unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("does not exist under"));
@@ -1801,22 +1822,27 @@ fn test_integration_error_missing_node_dir() {
 fn test_integration_error_test_data_dir_without_test_mode() {
     let fencer_bin = get_bin_path("pve-san-fenced");
     let output = std::process::Command::new(&fencer_bin)
-        .arg("--status-file").arg("/tmp/test_status_test_data")
+        .arg("--status-file")
+        .arg("/tmp/test_status_test_data")
         .env("PVE_SAN_TEST_DATA_DIR", "/tmp")
         // Note: intentionally excluding --test-mode
-        .output().unwrap();
+        .output()
+        .unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("PVE_SAN_TEST_DATA_DIR is set but daemon is not running in test/dry-run mode"));
+    assert!(stderr
+        .contains("PVE_SAN_TEST_DATA_DIR is set but daemon is not running in test/dry-run mode"));
 }
 
 #[test]
 fn test_integration_error_status_file_not_absolute() {
     let fencer_bin = get_bin_path("pve-san-fenced");
     let output = std::process::Command::new(&fencer_bin)
-        .arg("--status-file").arg("relative/path/status")
+        .arg("--status-file")
+        .arg("relative/path/status")
         .arg("--test-mode")
-        .output().unwrap();
+        .output()
+        .unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Status file path must be absolute: relative/path/status"));
@@ -1826,9 +1852,11 @@ fn test_integration_error_status_file_not_absolute() {
 fn test_integration_error_status_file_parent_missing() {
     let fencer_bin = get_bin_path("pve-san-fenced");
     let output = std::process::Command::new(&fencer_bin)
-        .arg("--status-file").arg("/tmp/non_existent_directory_1234/status")
+        .arg("--status-file")
+        .arg("/tmp/non_existent_directory_1234/status")
         .arg("--test-mode")
-        .output().unwrap();
+        .output()
+        .unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Parent directory of status file does not exist"));
@@ -1841,8 +1869,10 @@ fn test_integration_status_cli_empty_file() {
     std::fs::write(status_file, "").unwrap();
     let output = std::process::Command::new(&fencer_bin)
         .arg("--status")
-        .arg("--status-file").arg(status_file)
-        .output().unwrap();
+        .arg("--status-file")
+        .arg(status_file)
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(3));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Status file is empty"));
@@ -1856,8 +1886,10 @@ fn test_integration_status_cli_badly_formatted() {
     std::fs::write(status_file, "FOOBAR - Something broke").unwrap();
     let output = std::process::Command::new(&fencer_bin)
         .arg("--status")
-        .arg("--status-file").arg(status_file)
-        .output().unwrap();
+        .arg("--status-file")
+        .arg(status_file)
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(3));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Badly formatted status file: FOOBAR - Something broke"));
@@ -1871,8 +1903,10 @@ fn test_integration_status_cli_missing_file() {
     let _ = std::fs::remove_file(status_file);
     let output = std::process::Command::new(&fencer_bin)
         .arg("--status")
-        .arg("--status-file").arg(status_file)
-        .output().unwrap();
+        .arg("--status-file")
+        .arg(status_file)
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(3));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Failed to read status file"));
@@ -1883,17 +1917,20 @@ fn test_integration_status_cli_outdated_file() {
     let fencer_bin = get_bin_path("pve-san-fenced");
     let status_file = "/tmp/test_status_outdated";
     std::fs::write(status_file, "OK - Everything is fine").unwrap();
-    
+
     // Fake the modification time to be 10 minutes ago
     let past = std::time::SystemTime::now() - std::time::Duration::from_secs(600);
     filetime::set_file_mtime(status_file, filetime::FileTime::from_system_time(past)).unwrap();
-    
+
     let output = std::process::Command::new(&fencer_bin)
         .arg("--status")
-        .arg("--status-file").arg(status_file)
-        .arg("--poll-interval").arg("5")
-        .output().unwrap();
-        
+        .arg("--status-file")
+        .arg(status_file)
+        .arg("--poll-interval")
+        .arg("5")
+        .output()
+        .unwrap();
+
     assert_eq!(output.status.code(), Some(3));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Status file is outdated"));

@@ -31,7 +31,6 @@ fn get_bin_path(name: &str) -> std::path::PathBuf {
     path.join(name)
 }
 
-
 /// Helper to get the workspace root directory
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR is the directory containing mpath-mockd's Cargo.toml

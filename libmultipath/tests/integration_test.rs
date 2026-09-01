@@ -28,7 +28,6 @@ fn get_bin_path(name: &str) -> std::path::PathBuf {
     path.join(name)
 }
 
-
 /// Helper to get the workspace root directory
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -369,7 +368,10 @@ fn test_mock_server_hanging_socket() {
 fn test_send_command_on_fd_invalid() {
     let result = libmultipath::MultipathConnection::send_command_on_fd(-1, "test", None);
     assert!(result.is_err());
-    assert_eq!(result.err().unwrap().kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(
+        result.err().unwrap().kind(),
+        std::io::ErrorKind::InvalidInput
+    );
 }
 
 #[test]
@@ -395,7 +397,10 @@ fn test_unexpected_eof_on_length() {
     std::thread::sleep(Duration::from_millis(50));
     let res = libmultipath::send_multipath_command_to_socket(&socket_path, "show maps json");
     assert!(res.is_err());
-    assert_eq!(res.err().unwrap().kind(), std::io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        res.err().unwrap().kind(),
+        std::io::ErrorKind::ConnectionReset
+    );
 }
 
 #[test]
@@ -411,7 +416,10 @@ fn test_unexpected_eof_on_data() {
     std::thread::sleep(Duration::from_millis(50));
     let res = libmultipath::send_multipath_command_to_socket(&socket_path, "show maps json");
     assert!(res.is_err());
-    assert_eq!(res.err().unwrap().kind(), std::io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        res.err().unwrap().kind(),
+        std::io::ErrorKind::ConnectionReset
+    );
 }
 
 #[test]
@@ -422,8 +430,6 @@ fn test_command_with_null_byte() {
     assert!(res.is_err());
     assert_eq!(res.err().unwrap().kind(), std::io::ErrorKind::InvalidInput);
 }
-
-
 
 #[test]
 fn test_send_command_on_fd_valid() {
@@ -438,12 +444,12 @@ fn test_send_command_on_fd_valid() {
         stream.write_all(&[0u8]).unwrap();
     });
     std::thread::sleep(Duration::from_millis(50));
-    
+
     // Connect manually
     let abstract_name = socket_path.strip_prefix('@').unwrap();
     let addr = SocketAddr::from_abstract_name(abstract_name.as_bytes()).unwrap();
     let stream = UnixStream::connect_addr(&addr).unwrap();
-    
+
     let fd = stream.as_raw_fd();
     let res = libmultipath::MultipathConnection::send_command_on_fd(fd, "test fd", None);
     assert!(res.is_ok());

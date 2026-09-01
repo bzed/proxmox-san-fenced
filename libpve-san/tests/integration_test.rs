@@ -36,7 +36,6 @@ fn get_bin_path(name: &str) -> std::path::PathBuf {
     path.join(name)
 }
 
-
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 struct EnvGuard {

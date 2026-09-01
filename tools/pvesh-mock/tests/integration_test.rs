@@ -8,11 +8,11 @@ fn test_pvesh_mock_runs() {
         path.pop();
     }
     let bin = path.join("pvesh-mock");
-    
+
     let output = Command::new(bin)
         .arg("--help")
         .output()
         .expect("Failed to run pvesh-mock");
-    
+
     assert!(output.status.success());
 }

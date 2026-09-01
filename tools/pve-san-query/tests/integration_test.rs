@@ -34,7 +34,6 @@ fn get_bin_path(name: &str) -> std::path::PathBuf {
     path.join(name)
 }
 
-
 static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Helper to get the workspace root directory
