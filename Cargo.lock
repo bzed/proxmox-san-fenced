@@ -201,11 +201,11 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "libmultipath"
-version = "0.1.0"
+version = "0.1.13"
 
 [[package]]
 name = "libpve-san"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "log",
  "lsblk",
@@ -251,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "mpath-mockd"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "clap",
  "serde",
@@ -260,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "mpath-query"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "clap",
  "libmultipath",
@@ -301,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "pve-san-fenced"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "clap",
  "env_logger",
@@ -318,7 +318,7 @@ dependencies = [
 
 [[package]]
 name = "pve-san-query"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "clap",
  "libpve-san",
@@ -328,7 +328,7 @@ dependencies = [
 
 [[package]]
 name = "pvesh-mock"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "clap",
  "serde",
