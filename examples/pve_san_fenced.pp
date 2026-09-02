@@ -35,25 +35,22 @@
 # @param service_name
 #   The name of the systemd service to manage.
 class pve_san_fenced (
-  Integer         $poll_interval           = 5,
-  Integer         $max_failures            = 6,
-  Integer         $discovery_interval      = 60,
-  String          $socket                  = '@/org/kernel/linux/storage/multipathd',
-  String          $sysrq_char              = 's,b',
-  Boolean         $test_mode               = false,
-  Optional[String] $fence_dry_run          = undef,
-  Boolean         $debug                   = false,
-  Integer         $discovery_max_retries   = 5,
-  Integer         $discovery_backoff_base  = 1,
-  Integer         $discovery_backoff_max   = 30,
-  Integer         $fence_reboot_timeout    = 10,
-  Integer         $max_response_size       = 104857600,
-  String          $package_name            = 'pve-san-fenced',
-  String          $service_name            = 'pve-san-fenced',
+  Integer          $poll_interval           = 5,
+  Integer          $max_failures            = 6,
+  Integer          $discovery_interval      = 60,
+  String           $socket                  = '@/org/kernel/linux/storage/multipathd',
+  String           $sysrq_char              = 's,b',
+  Boolean          $test_mode               = false,
+  Boolean          $debug                   = false,
+  Integer          $discovery_max_retries   = 5,
+  Integer          $discovery_backoff_base  = 1,
+  Integer          $discovery_backoff_max   = 30,
+  Integer          $fence_reboot_timeout    = 10,
+  Integer          $max_response_size       = 104857600,
+  String           $package_name            = 'pve-san-fenced',
+  String           $service_name            = 'pve-san-fenced',
+  Optional[String] $fence_dry_run           = undef,
 ) {
-  package { $package_name:
-    ensure => installed,
-  }
 
   $config_content = @("CONFIG")
     # Configuration for pve-san-fenced daemon
@@ -111,11 +108,11 @@ class pve_san_fenced (
     group   => 'root',
     mode    => '0644',
     content => $config_content,
-    require => Package[$package_name],
-    notify  => Service[$service_name],
   }
-
-  service { $service_name:
+  -> package { $package_name:
+    ensure => installed,
+  }
+  -> service { $service_name:
     ensure    => running,
     enable    => true,
     subscribe => File['/etc/default/pve-san-fenced'],
