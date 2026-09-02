@@ -61,7 +61,7 @@ fn get_default_node_name() -> String {
 #[derive(Parser, Debug, PartialEq)]
 #[command(name = "pve-san-fenced")]
 #[command(author = "PVE SAN Fenced")]
-#[command(version = "0.1.0")]
+#[command(version = "0.1.13")]
 #[command(about = "SAN fencing daemon for Proxmox VE", long_about = None)]
 struct Cli {
     /// Seconds between multipathd checks

@@ -38,7 +38,7 @@ enum QueryMode {
 #[derive(Parser, Debug)]
 #[command(name = "pve-san-query")]
 #[command(author = "PVE SAN Fenced")]
-#[command(version = "0.1.0")]
+#[command(version = "0.1.13")]
 #[command(about = "Retrieve SAN/FC storage information from Proxmox VE hosts", long_about = None)]
 struct Cli {
     /// The Proxmox node name to query (optional in local-files mode)

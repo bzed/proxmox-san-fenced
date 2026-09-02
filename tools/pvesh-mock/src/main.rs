@@ -38,7 +38,7 @@ const DEFAULT_TEST_DATA_DIR: &str = "test-data/pvesh";
 #[derive(Parser, Debug)]
 #[command(name = "pvesh-mock")]
 #[command(author = "PVE SAN Fenced")]
-#[command(version = "0.1.0")]
+#[command(version = "0.1.13")]
 #[command(about = "Mock pvesh command for testing", long_about = None)]
 struct Cli {
     /// The command to execute (ls, get)

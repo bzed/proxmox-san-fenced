@@ -42,7 +42,7 @@ const DEFAULT_SHOW_MAPS_JSON_FILE: &str = "all_active_running.json";
 #[derive(Parser, Debug)]
 #[command(name = "mpath-mockd")]
 #[command(author = "PVE SAN Fenced")]
-#[command(version = "0.1.0")]
+#[command(version = "0.1.13")]
 #[command(about = "Mock multipathd daemon for testing", long_about = None)]
 struct Cli {
     /// The socket path to listen on (default: @/org/kernel/linux/storage/multipathd)

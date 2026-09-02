@@ -28,7 +28,7 @@ use libmultipath::{send_multipath_command_to_socket, DEFAULT_SOCKET};
 #[derive(Parser, Debug)]
 #[command(name = "mpath-query")]
 #[command(author = "PVE SAN Fenced")]
-#[command(version = "0.1.0")]
+#[command(version = "0.1.13")]
 #[command(about = "Send commands to multipathd and retrieve responses", long_about = None)]
 struct Cli {
     /// The command to send to multipathd (default: "show maps json")
