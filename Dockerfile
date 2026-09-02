@@ -5,8 +5,8 @@ RUN apt-get update && apt-get install -y \
     debhelper \
     fakeroot \
     dpkg-dev \
-    curl \
-    ca-certificates \
+    rustc \
+    cargo \
     git \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
