@@ -281,6 +281,95 @@ pub fn get_merged_config(config: &MultipathConfig, vendor: &str, product: &str) 
     merged
 }
 
+/// A device entry with pre-compiled vendor and product regex patterns.
+///
+/// Built from a parsed [`MultipathConfig`] to avoid recompiling the same
+/// regexes on every poll cycle. See [`compile_devices`].
+struct CompiledDevice {
+    vendor: Option<Regex>,
+    product: Option<Regex>,
+    config: DeviceConfig,
+}
+
+/// Pre-compiles vendor and product regex patterns from all device entries
+/// in a parsed [`MultipathConfig`]. Invalid regexes are logged and treated
+/// as non-matching (same behavior as the previous inline compilation).
+fn compile_devices(config: &MultipathConfig) -> Vec<CompiledDevice> {
+    config
+        .devices
+        .iter()
+        .map(|device| {
+            let vendor = device.vendor.as_deref().and_then(|v| match Regex::new(v) {
+                Ok(re) => Some(re),
+                Err(e) => {
+                    warn!("Invalid vendor regex '{}' in devices config: {}", v, e);
+                    None
+                }
+            });
+            let product = device.product.as_deref().and_then(|p| match Regex::new(p) {
+                Ok(re) => Some(re),
+                Err(e) => {
+                    warn!("Invalid product regex '{}' in devices config: {}", p, e);
+                    None
+                }
+            });
+            CompiledDevice {
+                vendor,
+                product,
+                config: device.clone(),
+            }
+        })
+        .collect()
+}
+
+/// Returns the merged [`DeviceConfig`] for a given vendor/product by matching
+/// against pre-compiled device regex patterns. Falls back to `None` vendor or
+/// product patterns matching anything (same semantics as `get_merged_config`).
+fn get_merged_config_compiled(
+    defaults: &DeviceConfig,
+    compiled_devices: &[CompiledDevice],
+    overrides: &DeviceConfig,
+    vendor: &str,
+    product: &str,
+) -> DeviceConfig {
+    let mut merged = defaults.clone();
+
+    for device in compiled_devices {
+        let vendor_match = device
+            .vendor
+            .as_ref()
+            .map_or(true, |re| re.is_match(vendor));
+        let product_match = device
+            .product
+            .as_ref()
+            .map_or(true, |re| re.is_match(product));
+
+        if vendor_match && product_match {
+            if device.config.dev_loss_tmo.is_some() {
+                merged.dev_loss_tmo = device.config.dev_loss_tmo.clone();
+            }
+            if device.config.no_path_retry.is_some() {
+                merged.no_path_retry = device.config.no_path_retry.clone();
+            }
+            if device.config.polling_interval.is_some() {
+                merged.polling_interval = device.config.polling_interval;
+            }
+        }
+    }
+
+    if overrides.dev_loss_tmo.is_some() {
+        merged.dev_loss_tmo = overrides.dev_loss_tmo.clone();
+    }
+    if overrides.no_path_retry.is_some() {
+        merged.no_path_retry = overrides.no_path_retry.clone();
+    }
+    if overrides.polling_interval.is_some() {
+        merged.polling_interval = overrides.polling_interval;
+    }
+
+    merged
+}
+
 use crate::MultipathMap;
 use log::warn;
 use std::collections::HashSet;
@@ -360,6 +449,7 @@ pub fn check_maps_config(
     fencing_time_sec: u64,
 ) {
     let parsed_config = parse_multipath_config(config_str);
+    let compiled_devices = compile_devices(&parsed_config);
     let mut all_warnings = Vec::new();
 
     let monitored_maps: Vec<&MultipathMap> = maps
@@ -380,7 +470,13 @@ pub fn check_maps_config(
         let vendor = map.vend.as_deref().unwrap_or("");
         let product = map.prod.as_deref().unwrap_or("");
 
-        let merged = get_merged_config(&parsed_config, vendor, product);
+        let merged = get_merged_config_compiled(
+            &parsed_config.defaults,
+            &compiled_devices,
+            &parsed_config.overrides,
+            vendor,
+            product,
+        );
 
         let map_warnings = validate_merged_device_config(&merged, fencing_time_sec);
         if !map_warnings.is_empty() {
