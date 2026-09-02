@@ -281,13 +281,25 @@ pub fn get_merged_config(config: &MultipathConfig, vendor: &str, product: &str) 
     merged
 }
 
+/// Compiled vendor or product pattern for a device entry.
+///
+/// `Absent` means no pattern was specified in the config (matches any vendor/product).
+/// `Invalid` means the pattern failed to compile (matches nothing, same as the
+/// previous inline behavior where invalid regexes were logged and treated as
+/// non-matching). `Compiled` holds the ready-to-use regex.
+enum CompiledPattern {
+    Absent,
+    Invalid,
+    Compiled(Regex),
+}
+
 /// A device entry with pre-compiled vendor and product regex patterns.
 ///
 /// Built from a parsed [`MultipathConfig`] to avoid recompiling the same
 /// regexes on every poll cycle. See [`compile_devices`].
 struct CompiledDevice {
-    vendor: Option<Regex>,
-    product: Option<Regex>,
+    vendor: CompiledPattern,
+    product: CompiledPattern,
     config: DeviceConfig,
 }
 
@@ -299,20 +311,26 @@ fn compile_devices(config: &MultipathConfig) -> Vec<CompiledDevice> {
         .devices
         .iter()
         .map(|device| {
-            let vendor = device.vendor.as_deref().and_then(|v| match Regex::new(v) {
-                Ok(re) => Some(re),
-                Err(e) => {
-                    warn!("Invalid vendor regex '{}' in devices config: {}", v, e);
-                    None
-                }
-            });
-            let product = device.product.as_deref().and_then(|p| match Regex::new(p) {
-                Ok(re) => Some(re),
-                Err(e) => {
-                    warn!("Invalid product regex '{}' in devices config: {}", p, e);
-                    None
-                }
-            });
+            let vendor = match &device.vendor {
+                None => CompiledPattern::Absent,
+                Some(v) => match Regex::new(v) {
+                    Ok(re) => CompiledPattern::Compiled(re),
+                    Err(e) => {
+                        warn!("Invalid vendor regex '{}' in devices config: {}", v, e);
+                        CompiledPattern::Invalid
+                    }
+                },
+            };
+            let product = match &device.product {
+                None => CompiledPattern::Absent,
+                Some(p) => match Regex::new(p) {
+                    Ok(re) => CompiledPattern::Compiled(re),
+                    Err(e) => {
+                        warn!("Invalid product regex '{}' in devices config: {}", p, e);
+                        CompiledPattern::Invalid
+                    }
+                },
+            };
             CompiledDevice {
                 vendor,
                 product,
@@ -323,8 +341,8 @@ fn compile_devices(config: &MultipathConfig) -> Vec<CompiledDevice> {
 }
 
 /// Returns the merged [`DeviceConfig`] for a given vendor/product by matching
-/// against pre-compiled device regex patterns. Falls back to `None` vendor or
-/// product patterns matching anything (same semantics as `get_merged_config`).
+/// against pre-compiled device regex patterns. Absent patterns match anything;
+/// invalid patterns match nothing (same semantics as `get_merged_config`).
 fn get_merged_config_compiled(
     defaults: &DeviceConfig,
     compiled_devices: &[CompiledDevice],
@@ -335,14 +353,16 @@ fn get_merged_config_compiled(
     let mut merged = defaults.clone();
 
     for device in compiled_devices {
-        let vendor_match = device
-            .vendor
-            .as_ref()
-            .map_or(true, |re| re.is_match(vendor));
-        let product_match = device
-            .product
-            .as_ref()
-            .map_or(true, |re| re.is_match(product));
+        let vendor_match = match &device.vendor {
+            CompiledPattern::Absent => true,
+            CompiledPattern::Invalid => false,
+            CompiledPattern::Compiled(re) => re.is_match(vendor),
+        };
+        let product_match = match &device.product {
+            CompiledPattern::Absent => true,
+            CompiledPattern::Invalid => false,
+            CompiledPattern::Compiled(re) => re.is_match(product),
+        };
 
         if vendor_match && product_match {
             if device.config.dev_loss_tmo.is_some() {
@@ -759,5 +779,141 @@ defaults {
         assert!(warnings
             .iter()
             .any(|w| w.contains("no_path_retry is not configured")));
+    }
+
+    #[test]
+    fn test_compile_devices_and_get_merged_config_compiled() {
+        let config_str = r#"
+defaults {
+    no_path_retry "queue"
+    dev_loss_tmo "120"
+}
+devices {
+    device {
+        vendor "HUAWEI"
+        product "XSG1"
+        dev_loss_tmo 30
+    }
+    device {
+        vendor "DELL"
+        product "ME4"
+        no_path_retry 20
+    }
+}
+overrides {
+    dev_loss_tmo "infinity"
+}
+"#;
+        let config = parse_multipath_config(config_str);
+        let compiled = compile_devices(&config);
+        assert_eq!(compiled.len(), 2);
+
+        // First device: vendor and product regex compiled successfully
+        assert!(matches!(compiled[0].vendor, CompiledPattern::Compiled(_)));
+        assert!(matches!(compiled[0].product, CompiledPattern::Compiled(_)));
+
+        // Second device: vendor and product regex compiled successfully
+        assert!(matches!(compiled[1].vendor, CompiledPattern::Compiled(_)));
+        assert!(matches!(compiled[1].product, CompiledPattern::Compiled(_)));
+
+        // Matching device: HUAWEI/XSG1 should get dev_loss_tmo 30 from device,
+        // overridden to "infinity" by overrides section
+        let merged = get_merged_config_compiled(
+            &config.defaults,
+            &compiled,
+            &config.overrides,
+            "HUAWEI",
+            "XSG1",
+        );
+        let expected = DeviceConfig {
+            vendor: None,
+            product: None,
+            dev_loss_tmo: Some("infinity".to_string()),
+            no_path_retry: Some("queue".to_string()),
+            polling_interval: None,
+        };
+        assert_eq!(merged, expected);
+
+        // Matching second device: DELL/ME4 gets no_path_retry 20 from device,
+        // dev_loss_tmo "infinity" from overrides
+        let merged_dell = get_merged_config_compiled(
+            &config.defaults,
+            &compiled,
+            &config.overrides,
+            "DELL",
+            "ME4",
+        );
+        assert_eq!(merged_dell.no_path_retry.as_deref(), Some("20"));
+        assert_eq!(merged_dell.dev_loss_tmo.as_deref(), Some("infinity"));
+
+        // Non-matching vendor/product: should get defaults + overrides only
+        let merged_unknown = get_merged_config_compiled(
+            &config.defaults,
+            &compiled,
+            &config.overrides,
+            "UNKNOWN",
+            "UNKNOWN",
+        );
+        assert_eq!(merged_unknown.no_path_retry.as_deref(), Some("queue"));
+        assert_eq!(merged_unknown.dev_loss_tmo.as_deref(), Some("infinity"));
+    }
+
+    #[test]
+    fn test_compile_devices_invalid_regex() {
+        let config_str = r#"
+devices {
+    device {
+        vendor "["
+        product "XSG1"
+        dev_loss_tmo 30
+    }
+}
+"#;
+        let config = parse_multipath_config(config_str);
+        let compiled = compile_devices(&config);
+        assert_eq!(compiled.len(), 1);
+        // Invalid regex should compile to Invalid (non-matching)
+        assert!(matches!(compiled[0].vendor, CompiledPattern::Invalid));
+        assert!(matches!(compiled[0].product, CompiledPattern::Compiled(_)));
+
+        // Vendor with invalid regex should not match, so dev_loss_tmo from
+        // device should NOT be applied
+        let merged = get_merged_config_compiled(
+            &config.defaults,
+            &compiled,
+            &config.overrides,
+            "HUAWEI",
+            "XSG1",
+        );
+        assert_ne!(merged.dev_loss_tmo.as_deref(), Some("30"));
+    }
+
+    #[test]
+    fn test_compile_devices_wildcard_patterns() {
+        let config_str = r#"
+devices {
+    device {
+        vendor ".*"
+        product ".*"
+        dev_loss_tmo 60
+    }
+}
+"#;
+        let config = parse_multipath_config(config_str);
+        let compiled = compile_devices(&config);
+        assert_eq!(compiled.len(), 1);
+        // Wildcard patterns should compile successfully
+        assert!(matches!(compiled[0].vendor, CompiledPattern::Compiled(_)));
+        assert!(matches!(compiled[0].product, CompiledPattern::Compiled(_)));
+
+        // Should match any vendor/product
+        let merged = get_merged_config_compiled(
+            &config.defaults,
+            &compiled,
+            &config.overrides,
+            "ANYTHING",
+            "ANYTHING",
+        );
+        assert_eq!(merged.dev_loss_tmo.as_deref(), Some("60"));
     }
 }
