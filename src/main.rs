@@ -428,49 +428,50 @@ async fn main() {
         rt.block_on(async {
             let mut consecutive_failures = 0u64;
             loop {
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    discover_in_use_mpaths(
-                        &node_clone,
-                        &pvesh_cmd_clone,
-                        Some(&socket_clone),
-                        debug_mode,
-                    )
-                }));
+                let node = node_clone.clone();
+                let pvesh_cmd = pvesh_cmd_clone.clone();
+                let socket = socket_clone.clone();
+                let debug = debug_mode;
 
-                match result {
-                    Ok(fut) => {
-                        match fut.await {
-                            Ok(mpaths) => {
-                                consecutive_failures = 0;
-                                pve_san_fenced::status::get_status_tracker().clear_issue("discovery_failure");
-                                pve_san_fenced::status::get_status_tracker().clear_issue("discovery_backoff");
-                                let mut lock = active_luns_clone.write().await;
-                                if lock.luns != mpaths {
-                                    let prev = &lock.luns;
-                                    info!("Active multipath devices changed. Previous: {prev:?}, New: {mpaths:?}");
-                                }
-                                *lock = ActiveLunsWithTimestamp::new(mpaths);
-                            }
-                            Err(e) => {
-                                consecutive_failures += 1;
-                                let msg = format!("Error discovering active multipath devices: {e}");
-                                error!("{msg}");
-                                pve_san_fenced::status::get_status_tracker().set_issue(
-                                    "discovery_failure",
-                                    pve_san_fenced::status::StatusLevel::Warning,
-                                    msg,
-                                );
-                            }
+                let join_handle = tokio::task::spawn(async move {
+                    discover_in_use_mpaths(&node, &pvesh_cmd, Some(&socket), debug).await
+                });
+
+                match join_handle.await {
+                    Ok(Ok(mpaths)) => {
+                        consecutive_failures = 0;
+                        pve_san_fenced::status::get_status_tracker().clear_issue("discovery_failure");
+                        pve_san_fenced::status::get_status_tracker().clear_issue("discovery_backoff");
+                        let mut lock = active_luns_clone.write().await;
+                        if lock.luns != mpaths {
+                            let prev = &lock.luns;
+                            info!("Active multipath devices changed. Previous: {prev:?}, New: {mpaths:?}");
                         }
+                        *lock = ActiveLunsWithTimestamp::new(mpaths);
                     }
-                    Err(panic_err) => {
+                    Ok(Err(e)) => {
                         consecutive_failures += 1;
-                        let error_msg = if let Some(s) = panic_err.downcast_ref::<&str>() {
-                            s.to_string()
-                        } else if let Some(s) = panic_err.downcast_ref::<String>() {
-                            s.clone()
+                        let msg = format!("Error discovering active multipath devices: {e}");
+                        error!("{msg}");
+                        pve_san_fenced::status::get_status_tracker().set_issue(
+                            "discovery_failure",
+                            pve_san_fenced::status::StatusLevel::Warning,
+                            msg,
+                        );
+                    }
+                    Err(join_error) => {
+                        consecutive_failures += 1;
+                        let error_msg = if join_error.is_panic() {
+                            let panic_err = join_error.into_panic();
+                            if let Some(s) = panic_err.downcast_ref::<&str>() {
+                                s.to_string()
+                            } else if let Some(s) = panic_err.downcast_ref::<String>() {
+                                s.clone()
+                            } else {
+                                "Unknown panic error".to_string()
+                            }
                         } else {
-                            "Unknown panic error".to_string()
+                            "Discovery task was cancelled".to_string()
                         };
                         let msg = format!("Panic in discovery thread: {error_msg}");
                         error!("{msg}");
