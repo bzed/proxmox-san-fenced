@@ -45,7 +45,14 @@ Command or path to use for Proxmox VE API queries. Default is "pvesh".
 Comma-separated list of characters to write to /proc/sysrq-trigger when fencing. Default is "s,b" (sync followed by reboot). Any sync ('s') triggers a 1-second sleep to wait for the sync to complete.
 .TP
 .B \-t ", " \-\-test\-mode
-Run the daemon in test/dry-run mode. Fencing decisions and transitions are logged, but the reboot/panic is not triggered.
+Run the daemon in test mode. When a fencing decision is reached, the decision is logged but
+.B trigger_fencing
+is never called, so no SysRq characters are written to
+.I /proc/sysrq-trigger .
+The daemon continues running and monitoring. Use this for validating configuration
+without risk of reboot. See also
+.B PVE_SAN_FENCE_DRY_RUN
+for a different dry-run mechanism that exits the daemon after a fencing decision.
 .TP
 .B \-\-debug
 Enable debug log mode to log discovered VMs, storages, and multipath devices with their state on each discovery run.
@@ -88,7 +95,22 @@ Comma-separated list of characters to write to /proc/sysrq-trigger when fencing.
 Path to write the Nagios-compatible status file. Corresponds to \fB\-\-status\-file\fR.
 .TP
 .B PVE_SAN_FENCE_DRY_RUN
-If set, the daemon acts as if running in test mode internally and exits instead of writing to the SysRq trigger.
+If set, the daemon enters
+.B trigger_fencing
+when a fencing decision is reached, but instead of writing to
+.I /proc/sysrq-trigger ,
+it logs the decision, flushes the status file, and exits with code 0. The daemon does
+.B not
+continue running after the decision. This differs from
+.B \-\-test\-mode
+which never calls
+.B trigger_fencing
+and keeps the daemon alive. Use
+.B \-\-test\-mode
+for long-running validation; use
+.B PVE_SAN_FENCE_DRY_RUN
+for one-shot integration tests that need to verify the full fencing code path without
+triggering a reboot.
 .SH MULTIPATH CONFIGURATION
 For the fencing daemon to operate safely and reliably,
 .B multipathd

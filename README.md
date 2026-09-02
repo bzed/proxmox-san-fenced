@@ -86,7 +86,8 @@ Configuration options can be customized in `/etc/default/pve-san-fenced`:
 - `PVE_SAN_SOCKET`: Path to the `multipathd` Unix socket (default: `@/org/kernel/linux/storage/multipathd`). Supports both abstract namespace sockets (prefixed with `@`) and standard Unix domain socket files.
 - `PVE_SAN_NODE_NAME`: The name of the local Proxmox VE node (default: system hostname).
 - `PVE_SAN_SYSRQ_CHAR`: Comma-separated list of SysRq characters to send sequentially (default: `s,b` for sync followed by reboot. A sync `'s'` causes a 1-second sleep).
-- `PVE_SAN_TEST_MODE`: Run in test/dry-run mode without actually writing to SysRq (default: empty).
+- `PVE_SAN_TEST_MODE`: Run in test mode. Fencing decisions are logged but `trigger_fencing` is never called and the daemon stays running (default: empty).
+- `PVE_SAN_FENCE_DRY_RUN`: If set, `trigger_fencing` is called on a fencing decision, but instead of writing to SysRq the daemon logs the decision, flushes the status file, and exits with code 0. Unlike `PVE_SAN_TEST_MODE`, the daemon does not continue running. Use this for one-shot integration tests; use `PVE_SAN_TEST_MODE` for long-running validation (default: empty).
 - `PVE_SAN_DEBUG`: Enable verbose debug logging of discovered VMs, storages, and multipath devices and their states on each discovery run (default: empty).
 - `PVE_SAN_STATUS_FILE`: Path to write the Nagios-compatible status file (default: `/run/pve-san-fenced/status`).
 

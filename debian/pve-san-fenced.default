@@ -15,8 +15,15 @@
 # SysRq character to trigger fencing (default is 's,b' for sync and reboot)
 # PVE_SAN_SYSRQ_CHAR=s,b
 
-# Set to true to run in test/dry-run mode (does not trigger SysRq kernel panic)
+# Set to true to run in test mode. Fencing decisions are logged but trigger_fencing
+# is never called and the daemon stays running.
 # PVE_SAN_TEST_MODE=false
+
+# If set, trigger_fencing is called on a fencing decision, but instead of writing
+# to SysRq the daemon logs the decision, flushes the status file, and exits with
+# code 0. Unlike PVE_SAN_TEST_MODE, the daemon does not continue running.
+# Intended for one-shot integration tests.
+# PVE_SAN_FENCE_DRY_RUN=
 
 # Set to true to enable verbose debug logging of discovered VMs, storages, and multipaths on each discovery run
 # PVE_SAN_DEBUG=false
