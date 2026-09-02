@@ -2,7 +2,7 @@ Source: pve-san-fenced
 Section: admin
 Priority: optional
 Maintainer: Bernd Zeimetz <bernd@bzed.de>
-Build-Depends: debhelper-compat (= 13), rustc, cargo
+Build-Depends: debhelper-compat (= 13), rustup
 Standards-Version: 4.6.2
 Rules-Requires-Root: no
 

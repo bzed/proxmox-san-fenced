@@ -5,8 +5,7 @@ RUN apt-get update && apt-get install -y \
     debhelper \
     fakeroot \
     dpkg-dev \
-    rustc \
-    cargo \
+    rustup \
     git \
     build-essential \
     && rm -rf /var/lib/apt/lists/*

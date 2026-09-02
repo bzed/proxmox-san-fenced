@@ -1,8 +1,15 @@
 #!/usr/bin/make -f
 export DH_VERBOSE = 1
 
+export RUSTUP_HOME = $(CURDIR)/.rustup_home
+export CARGO_HOME = $(CURDIR)/.cargo_home
+export PATH := $(CURDIR)/.cargo_home/bin:$(PATH)
+
 %:
 	dh $@
+
+override_dh_auto_configure:
+	rustup default stable
 
 override_dh_auto_build:
 	cargo build --release --workspace
@@ -25,4 +32,5 @@ override_dh_auto_install:
 
 override_dh_auto_clean:
 	cargo clean
+	rm -rf .cargo_home .rustup_home
 
