@@ -15,6 +15,13 @@ override_dh_auto_build:
 	cargo build --release -p pve-san-fenced -p mpath-query -p pve-san-query
 
 override_dh_auto_test:
+	@echo "Checking version consistency between debian/changelog and Cargo.toml files..."
+	@CHANGELOG_VERSION=$$(dpkg-parsechangelog -S Version | cut -d- -f1) ; \
+	CARGO_VERSIONS=$$(grep -h '^version' Cargo.toml libmultipath/Cargo.toml libpve-san/Cargo.toml tools/*/Cargo.toml | sed 's/.*"\(.*\)".*/\1/' | sort -u) ; \
+	if [ "$$CARGO_VERSIONS" != "$$CHANGELOG_VERSION" ]; then \
+		echo "ERROR: debian/changelog version ($$CHANGELOG_VERSION) does not match Cargo.toml versions ($$CARGO_VERSIONS)"; \
+		exit 1; \
+	fi
 	cargo build --workspace
 	cargo test --workspace
 	rm -rf target/debug
