@@ -12,14 +12,12 @@ override_dh_auto_configure:
 	rustup default stable
 
 override_dh_auto_build:
-	cargo build --release --workspace
+	cargo build --release -p pve-san-fenced -p mpath-query -p pve-san-query
 
 override_dh_auto_test:
-	mkdir -p target/debug
-	for bin in pve-san-fenced mpath-query pve-san-query mpath-mockd pvesh-mock; do \
-		ln -sf ../release/$$bin target/debug/$$bin; \
-	done
-	cargo test --release --workspace
+	cargo build --workspace
+	cargo test --workspace
+	rm -rf target/debug
 
 override_dh_auto_install:
 	install -D -m 0755 target/release/pve-san-fenced $(CURDIR)/debian/pve-san-fenced/usr/sbin/pve-san-fenced
