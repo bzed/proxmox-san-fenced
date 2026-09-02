@@ -407,6 +407,8 @@ impl Fencer {
 
         debug!("Monitored maps subset: {:?}", monitored_maps);
 
+        let mut map_dead_states: HashMap<String, bool> = HashMap::new();
+
         for map in &monitored_maps {
             let total_paths = map
                 .path_groups
@@ -433,6 +435,8 @@ impl Fencer {
             if self.permanently_broken_luns.contains(name) {
                 is_dead = true;
             }
+
+            map_dead_states.insert(map.name.clone(), is_dead);
 
             let prev_dead = self.previous_map_states.insert(map.name.clone(), is_dead);
             if prev_dead != Some(is_dead) {
@@ -478,16 +482,14 @@ impl Fencer {
                     monitored_maps
                         .iter()
                         .find(|m| m.name == part || m.uuid == part)
-                        .copied()
-                        .map(|m| is_map_dead(m) || self.permanently_broken_luns.contains(&m.name))
+                        .and_then(|m| map_dead_states.get(&m.name).copied())
                         .unwrap_or(false)
                 })
             } else {
                 monitored_maps
                     .iter()
                     .find(|m| m.name == *lun || m.uuid == *lun)
-                    .copied()
-                    .map(|m| is_map_dead(m) || self.permanently_broken_luns.contains(&m.name))
+                    .and_then(|m| map_dead_states.get(&m.name).copied())
                     .unwrap_or(false)
             };
 
@@ -517,7 +519,7 @@ impl Fencer {
             if self.consecutive_failures >= self.max_failures {
                 let dead_map_names: Vec<String> = monitored_maps
                     .iter()
-                    .filter(|m| is_map_dead(m) || self.permanently_broken_luns.contains(&m.name))
+                    .filter(|m| map_dead_states.get(&m.name).copied().unwrap_or(false))
                     .map(|m| {
                         let name = &m.name;
                         let uuid = &m.uuid;
