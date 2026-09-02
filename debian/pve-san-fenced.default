@@ -27,3 +27,18 @@
 
 # Set to true to enable verbose debug logging of discovered VMs, storages, and multipaths on each discovery run
 # PVE_SAN_DEBUG=false
+
+# Maximum consecutive discovery failures before applying exponential backoff (0 = no backoff)
+# PVE_SAN_DISCOVERY_MAX_RETRIES=5
+
+# Base delay in seconds for exponential backoff
+# PVE_SAN_DISCOVERY_BACKOFF_BASE=1
+
+# Maximum backoff delay in seconds
+# PVE_SAN_DISCOVERY_BACKOFF_MAX=30
+
+# Seconds to wait after sending the reboot SysRq character before retrying
+# PVE_SAN_FENCE_REBOOT_TIMEOUT=10
+
+# Maximum size in bytes of a multipathd JSON response
+# PVE_SAN_MAX_RESPONSE_SIZE=104857600

@@ -90,6 +90,12 @@ Configuration options can be customized in `/etc/default/pve-san-fenced`:
 - `PVE_SAN_FENCE_DRY_RUN`: If set, `trigger_fencing` is called on a fencing decision, but instead of writing to SysRq the daemon logs the decision, flushes the status file, and exits with code 0. Unlike `PVE_SAN_TEST_MODE`, the daemon does not continue running. Use this for one-shot integration tests; use `PVE_SAN_TEST_MODE` for long-running validation (default: empty).
 - `PVE_SAN_DEBUG`: Enable verbose debug logging of discovered VMs, storages, and multipath devices and their states on each discovery run (default: empty).
 - `PVE_SAN_STATUS_FILE`: Path to write the Nagios-compatible status file (default: `/run/pve-san-fenced/status`).
+- `PVE_SAN_DISCOVERY_MAX_RETRIES`: Maximum consecutive discovery failures before applying exponential backoff; 0 disables backoff (default: 5).
+- `PVE_SAN_DISCOVERY_BACKOFF_BASE`: Base delay in seconds for exponential backoff (default: 1).
+- `PVE_SAN_DISCOVERY_BACKOFF_MAX`: Maximum backoff delay in seconds (default: 30).
+- `PVE_SAN_FENCE_REBOOT_TIMEOUT`: Seconds to wait after sending the reboot SysRq character before retrying (default: 10).
+- `PVE_SAN_MAX_RESPONSE_SIZE`: Maximum size in bytes of a multipathd JSON response (default: 104857600, i.e. 100 MB).
+- `PVE_SAN_SYS_NODES_DIR`: Directory containing Proxmox VE node subdirectories, used to validate the node name at startup (default: `/etc/pve/nodes`).
 
 ### Nagios Monitoring Integration
 

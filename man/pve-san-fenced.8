@@ -1,4 +1,4 @@
-.TH PVE-SAN-FENCED 8 "June 2026" "Version 0.1.0" "PVE SAN Fenced Daemon"
+.TH PVE-SAN-FENCED 8 "September 2026" "Version 0.1.12" "PVE SAN Fenced Daemon"
 .SH NAME
 pve-san-fenced \- SAN fencing daemon for Proxmox VE
 .SH SYNOPSIS
@@ -15,6 +15,9 @@ pve-san-fenced \- SAN fencing daemon for Proxmox VE
 [\fB\-\-debug\fR]
 [\fB\-\-status\fR]
 [\fB\-\-status\-file\fR \fIpath\fR]
+[\fB\-\-discovery\-max\-retries\fR \fIcount\fR]
+[\fB\-\-discovery\-backoff\-base\fR \fIseconds\fR]
+[\fB\-\-discovery\-backoff\-max\fR \fIseconds\fR]
 .SH DESCRIPTION
 .B pve-san-fenced
 is a daemon that monitors the health of SAN/FC multipath storage devices actively used by running VMs on a Proxmox VE node. If all paths to the storage are lost persistently across multiple cycles, the daemon initiates a reboot or kernel panic using the Linux SysRq trigger to prevent split-brain conditions or VM corruption (fencing).
@@ -62,6 +65,15 @@ Query and print the current daemon status from the status file, exiting with the
 .TP
 .BI \-\-status\-file " path"
 Path to write the Nagios-compatible status file. Default is /run/pve-san-fenced/status.
+.TP
+.BI \-\-discovery\-max\-retries " count"
+Maximum number of consecutive discovery failures before applying exponential backoff. Set to 0 to disable backoff entirely. Default is 5.
+.TP
+.BI \-\-discovery\-backoff\-base " seconds"
+Base delay in seconds for exponential backoff after the retry threshold is exceeded. The delay is base * 2^(failures - max_retries), capped at \fB\-\-discovery\-backoff\-max\fR. Default is 1.
+.TP
+.BI \-\-discovery\-backoff\-max " seconds"
+Maximum backoff delay in seconds between discovery attempts. Default is 30.
 .SH ENVIRONMENT
 .TP
 .B PVE_SAN_POLL_INTERVAL
@@ -111,6 +123,24 @@ for long-running validation; use
 .B PVE_SAN_FENCE_DRY_RUN
 for one-shot integration tests that need to verify the full fencing code path without
 triggering a reboot.
+.TP
+.B PVE_SAN_DISCOVERY_MAX_RETRIES
+Maximum number of consecutive discovery failures before applying exponential backoff. Corresponds to \fB\-\-discovery\-max\-retries\fR.
+.TP
+.B PVE_SAN_DISCOVERY_BACKOFF_BASE
+Base delay in seconds for exponential backoff. Corresponds to \fB\-\-discovery\-backoff\-base\fR.
+.TP
+.B PVE_SAN_DISCOVERY_BACKOFF_MAX
+Maximum backoff delay in seconds. Corresponds to \fB\-\-discovery\-backoff\-max\fR.
+.TP
+.B PVE_SAN_FENCE_REBOOT_TIMEOUT
+Seconds to wait after sending the reboot SysRq character before retrying. If the system does not reboot within this period, a fallback reboot is attempted. Default is 10.
+.TP
+.B PVE_SAN_MAX_RESPONSE_SIZE
+Maximum size in bytes of a multipathd JSON response. Responses exceeding this limit are rejected to prevent excessive memory usage. Default is 104857600 (100 MB).
+.TP
+.B PVE_SAN_SYS_NODES_DIR
+Directory containing Proxmox VE node subdirectories, used to validate the node name at startup. Default is /etc/pve/nodes.
 .SH MULTIPATH CONFIGURATION
 For the fencing daemon to operate safely and reliably,
 .B multipathd
