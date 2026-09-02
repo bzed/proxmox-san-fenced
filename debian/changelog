@@ -1,3 +1,26 @@
+pve-san-fenced (0.1.13) unstable; urgency=medium
+
+  * [da1c557] fix: Remove committed test_parse binary and source from git
+  * [00b58c9] fix: Remove unconditional debug logging to /tmp in pvesh-mock
+  * [dd33369] fix: Use Debian-packaged Rust instead of curl|sh rustup in build
+  * [a191f14] docs: Clarify distinction between --test-mode and PVE_SAN_FENCE_DRY_RUN
+  * [abfb78b] fix: Use Debian rustup package to install current Rust toolchain
+  * [17420df] fix: Use flush() instead of sleep in exit_with_flush
+  * [53afe7d] fix: Catch panics in discovery thread async body via tokio::task::spawn
+  * [a4103bb] fix: Treat missing path_groups as alive in is_map_dead
+  * [f4243f7] fix: Serialize status file writes to prevent stale content
+  * [99908af] docs: Document missing CLI options, env vars, and fix manpage version
+  * [2d2962e] fix: Run 'rustup default stable' before cargo clean in dh_auto_clean
+  * [2207f4e] refactor: Replace bool/Option positional params in discover_in_use_mpaths
+  * [0842529] perf: Cache compiled regexes in multipath config validation
+  * [623fcb2] perf: Pre-compute is_map_dead results to avoid redundant calls
+  * [e30e9c6] fix: Remove stray #[tracing::instrument] attribute in libpve-san
+  * [d10cf5f] deps: Upgrade workspace thiserror from 1.0 to 2.0
+  * [1937852] fix: Remove hardcoded orig.tar.gz, fix glob failures, build debug for tests, exclude mock tools
+  * [c2d603b] test: Add unit tests for compile_devices and get_merged_config_compiled
+
+ -- Bernd Zeimetz <bzed@debian.org>  Wed, 02 Sep 2026 11:55:24 +0200
+
 pve-san-fenced (0.1.12) unstable; urgency=medium
 
   * [37b3b61] fix: Use 'pvesh get' instead of 'ls' to retrieve running VM status and VMIDs
