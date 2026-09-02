@@ -18,7 +18,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          apt-get install -y debhelper fakeroot dpkg-dev rustup git build-essential
+          apt-get install -y debhelper fakeroot dpkg-dev rustup ca-certificates git build-essential
 
       - name: Build Debian package
         run: |
