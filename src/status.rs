@@ -138,6 +138,14 @@ impl StatusTracker {
             (max_level, msgs_owned.join("; "))
         };
 
+        let mut guard = self.last_write_thread.lock().unwrap();
+        // Join the previous write thread before starting a new one to ensure
+        // writes are serialized and the final file content reflects the latest
+        // status update.
+        if let Some(prev_handle) = guard.take() {
+            let _ = prev_handle.join();
+        }
+
         let handle = std::thread::spawn(move || {
             let content = format!("{level} - {message}\n");
 
@@ -157,7 +165,6 @@ impl StatusTracker {
             }
         });
 
-        let mut guard = self.last_write_thread.lock().unwrap();
         *guard = Some(handle);
     }
 }
