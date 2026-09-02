@@ -232,8 +232,7 @@ fn validate_sysrq(sysrq_chars: &str) -> Result<(), String> {
 }
 
 fn exit_with_flush(code: i32) -> ! {
-    // Wait briefly to allow the status file write thread to write status file
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    pve_san_fenced::status::get_status_tracker().flush();
     std::process::exit(code);
 }
 
