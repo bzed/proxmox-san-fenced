@@ -18,6 +18,8 @@ pve-san-fenced (0.1.13) unstable; urgency=medium
   * [d10cf5f] deps: Upgrade workspace thiserror from 1.0 to 2.0
   * [1937852] fix: Remove hardcoded orig.tar.gz, fix glob failures, build debug for tests, exclude mock tools
   * [c2d603b] test: Add unit tests for compile_devices and get_merged_config_compiled
+  * [c3217e1] chore: Bump version to 0.1.13 to match debian/changelog
+  * [3d4cd24] test: Add version consistency check to debian/rules test step
 
  -- Bernd Zeimetz <bzed@debian.org>  Wed, 02 Sep 2026 11:55:24 +0200
 
