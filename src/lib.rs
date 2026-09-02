@@ -176,58 +176,70 @@ pub async fn discover_in_use_mpaths(
 
 /// Evaluates if a multipath map has lost all paths
 pub fn is_map_dead(map: &MultipathMap) -> bool {
-    if let Some(pgs) = &map.path_groups {
-        for pg in pgs {
-            let pg_alive = match &pg.dm_st {
-                Some(st) => st != "offline" && st != "failed",
-                None => {
-                    // Safe tradeoff: if dm_st is missing, treat the path group as alive
-                    // to prevent false fencing/reboots due to transient API omissions.
+    let pgs = match &map.path_groups {
+        Some(pgs) => pgs,
+        None => {
+            // Safe tradeoff: if path_groups is missing, treat the map as alive
+            // to prevent false fencing/reboots due to transient API omissions.
+            let map_name = &map.name;
+            warn!("path_groups is missing for map '{map_name}'");
+            crate::status::get_status_tracker().set_issue(
+                &format!("missing_path_groups_{map_name}"),
+                crate::status::StatusLevel::Warning,
+                format!("path_groups is missing for map '{map_name}'"),
+            );
+            return false;
+        }
+    };
+
+    for pg in pgs {
+        let pg_alive = match &pg.dm_st {
+            Some(st) => st != "offline" && st != "failed",
+            None => {
+                // Safe tradeoff: if dm_st is missing, treat the path group as alive
+                // to prevent false fencing/reboots due to transient API omissions.
+                let map_name = &map.name;
+                warn!("dm_st is missing for path group in map '{map_name}'");
+                crate::status::get_status_tracker().set_issue(
+                    &format!("missing_dm_st_{map_name}"),
+                    crate::status::StatusLevel::Warning,
+                    format!("dm_st is missing for map '{map_name}'"),
+                );
+                true
+            }
+        };
+        if !pg_alive {
+            continue;
+        }
+
+        if let Some(paths) = &pg.paths {
+            let mut active_path_found = false;
+            for path in paths {
+                if let Some(dm_st) = &path.dm_st {
+                    if dm_st != "failed" && dm_st != "faulty" && dm_st != "ghost" {
+                        active_path_found = true;
+                        break;
+                    }
+                } else {
+                    // Safe tradeoff: if dm_st is missing, treat the individual path
+                    // as alive to prevent false fencing/reboots due to transient API omissions.
                     let map_name = &map.name;
-                    warn!("dm_st is missing for path group in map '{map_name}'");
+                    warn!("dm_st is missing for path in map '{map_name}'");
                     crate::status::get_status_tracker().set_issue(
                         &format!("missing_dm_st_{map_name}"),
                         crate::status::StatusLevel::Warning,
                         format!("dm_st is missing for map '{map_name}'"),
                     );
-                    true
+                    active_path_found = true;
+                    break;
                 }
-            };
-            if !pg_alive {
-                continue;
             }
-
-            if let Some(paths) = &pg.paths {
-                let mut active_path_found = false;
-                for path in paths {
-                    if let Some(dm_st) = &path.dm_st {
-                        if dm_st != "failed" && dm_st != "faulty" && dm_st != "ghost" {
-                            active_path_found = true;
-                            break;
-                        }
-                    } else {
-                        // Safe tradeoff: if dm_st is missing, treat the individual path
-                        // as alive to prevent false fencing/reboots due to transient API omissions.
-                        let map_name = &map.name;
-                        warn!("dm_st is missing for path in map '{map_name}'");
-                        crate::status::get_status_tracker().set_issue(
-                            &format!("missing_dm_st_{map_name}"),
-                            crate::status::StatusLevel::Warning,
-                            format!("dm_st is missing for map '{map_name}'"),
-                        );
-                        active_path_found = true;
-                        break;
-                    }
-                }
-                if active_path_found {
-                    return false;
-                }
+            if active_path_found {
+                return false;
             }
         }
-        true
-    } else {
-        true
     }
+    true
 }
 
 static FENCING_IN_PROGRESS: std::sync::atomic::AtomicBool =
@@ -680,7 +692,7 @@ mod tests {
         };
         assert!(is_map_dead(&empty_map));
 
-        // 3. Map with no path groups field
+        // 3. Map with no path groups field (treated as alive — safe tradeoff to prevent false fencing)
         let no_pg_map = MultipathMap {
             name: "mpatha".to_string(),
             uuid: "368c".to_string(),
@@ -688,7 +700,7 @@ mod tests {
             prod: None,
             path_groups: None,
         };
-        assert!(is_map_dead(&no_pg_map));
+        assert!(!is_map_dead(&no_pg_map));
 
         // 4. Map with ghost paths only
         let ghost_map = MultipathMap {
