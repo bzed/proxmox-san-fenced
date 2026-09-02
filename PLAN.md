@@ -2,6 +2,97 @@
 
 This document describes the implementation of the tools and libraries in the pve-san-fenced project in sufficient detail that an agent can either create or verify the code based on the description.
 
+## Current Development State
+
+**Version**: 0.1.13 (all Cargo.toml files, CLI `--version`, manpages, and
+debian/changelog aligned; a version consistency check runs during the
+Debian build test step).
+
+### Changes since the last planning phase
+
+The following changes were introduced after the initial implementation
+plan was written. They are reflected in the updated sections below.
+
+**Security fixes**:
+- Removed committed `test_parse` binary and source from git (S1)
+- Removed unconditional debug logging to `/tmp/pvesh-mock-debug.log` in
+  `pvesh-mock`, replaced with `--verbose`-gated `eprintln!` (S2)
+- Build now uses the Debian `rustup` package with `ca-certificates` in
+  `Build-Depends` instead of piping `curl` output into `sh` (S3)
+- `exit_with_flush` now calls `StatusTracker::flush()` instead of sleeping
+  500ms, guaranteeing the status file is written before exit (S4)
+- Documented the distinction between `--test-mode` (daemon stays alive,
+  never calls `trigger_fencing`) and `PVE_SAN_FENCE_DRY_RUN` (calls
+  `trigger_fencing`, logs, exits 0) in manpage, README, and Debian
+  defaults file (S5)
+
+**Correctness fixes**:
+- Discovery thread panic recovery fixed: replaced `catch_unwind` (which
+  only wrapped future construction) with `tokio::task::spawn`, catching
+  panics in the async body via `JoinError` (B1)
+- `is_map_dead` now treats missing `path_groups` as alive (with a warning
+  and status issue), consistent with the existing safe-tradeoff for
+  missing `dm_st` fields (B2)
+- `permanently_broken_luns` latch: confirmed intentional (wontfix) — once
+  all paths disappear, VMs' I/O is inconsistent and the node must fence
+  even if paths return (B3)
+- Status file writes are now serialized: `write_status_file` joins the
+  previous write thread before spawning a new one, preventing stale
+  content from out-of-order completion (B4)
+
+**Code quality improvements**:
+- `discover_in_use_mpaths` now takes a `DiscoveryConfig` struct instead
+  of opaque `Option<&str>` and `bool` positional parameters (Q1)
+- Multipath config regexes are pre-compiled once per poll cycle via
+  `compile_devices` / `get_merged_config_compiled` instead of
+  recompiling on every call (Q2)
+- `is_map_dead` results are pre-computed into a `HashMap<String, bool>`
+  in the first loop of `update_with_maps`, avoiding redundant calls in
+  the second loop and decision message (Q3)
+- Removed stray `#[tracing::instrument]` attribute detached from any
+  function in `libpve-san` (Q4)
+- Upgraded workspace `thiserror` from 1.0 to 2.0, eliminating the
+  duplicate `thiserror 1.0.69` (only 2.0.18 remains, shared with `lsblk`)
+  (Q5)
+
+**Packaging/build fixes**:
+- Removed hardcoded `orig.tar.gz` generation (native package does not
+  need it; hardcoded version would break on version change) (P2)
+- Fixed `cp` glob failures in `docker-entrypoint.sh` and CI workflow when
+  dbgsym artifacts are absent (P3)
+- Test step builds debug binaries via `cargo build --workspace` instead
+  of symlinking release binaries; debug artifacts are removed after
+  testing (P4)
+- Production build excludes mock tools (`mpath-mockd`, `pvesh-mock`) via
+  `-p` flags; only `pve-san-fenced`, `mpath-query`, `pve-san-query` are
+  built in release (P5)
+- `override_dh_auto_clean` uses `rm -rf target` instead of `cargo clean`
+  to avoid requiring a toolchain download during the network-free clean
+  step
+- Debian `rustup` package with `ca-certificates` in `Build-Depends`;
+  `rustup default stable` runs in `override_dh_auto_configure`
+- Version consistency check in `override_dh_auto_test` strips Debian
+  revision suffixes (`+salsaci+...`, `-1`, etc.) before comparing
+
+**Documentation**:
+- Documented `--discovery-max-retries`, `--discovery-backoff-base`,
+  `--discovery-backoff-max` (CLI + env vars) and `PVE_SAN_FENCE_REBOOT_TIMEOUT`,
+  `PVE_SAN_MAX_RESPONSE_SIZE`, `PVE_SAN_SYS_NODES_DIR` (env-only vars) in
+  manpage, README, and Debian defaults file (D1)
+- Updated manpage version string to match package version (D2)
+- Added missing options to `debian/pve-san-fenced.default` (D3)
+- Updated Puppet example (`examples/pve_san_fenced.pp`) to match the
+  Debian defaults file, including all new parameters
+- Updated `debian/changelog` with entry for 0.1.13
+
+**Test coverage**:
+- Added unit tests for `compile_devices` and `get_merged_config_compiled`
+  covering matching, non-matching, invalid-regex, and wildcard-pattern
+  scenarios
+- Introduced `CompiledPattern` enum (`Absent`, `Invalid`, `Compiled`) to
+  correctly distinguish "no pattern specified" (matches any) from
+  "invalid regex" (matches nothing) in the compiled path
+
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
@@ -26,14 +117,14 @@ The pve-san-fenced project develops a SAN fencing daemon for Proxmox VE (Virtual
 The project consists of:
 - Two Rust libraries for interacting with multipathd and Proxmox VE
 - Four CLI tools for querying and mocking system components
-- A main daemon (pve-san-fenced) - to be implemented
+- A main daemon (pve-san-fenced) — implemented and operational
 
 All components are written in Rust 2021 edition and use the following common dependencies (defined in workspace Cargo.toml):
 - `clap = { version = "4.0", features = ["derive"] }` - For CLI argument parsing
 - `lsblk = "0.6.1"` - For block device information
 - `serde = { version = "1.0", features = ["derive"] }` - For serialization
 - `serde_json = "1.0"` - For JSON handling
-- `thiserror = "1.0"` - For error handling
+- `thiserror = "2.0"` - For error handling
 - `tokio = { version = "1.0", features = ["rt", "sync", "macros"] }` - For async runtime
 
 ---
@@ -48,7 +139,9 @@ pve-san-fenced/
 ├── PLAN.md                       # This document
 ├── README.md                     # Project overview and user documentation
 ├── src/
-│   ├── lib.rs                    # Core daemon library (Fencer, discover_in_use_mpaths, trigger_fencing)
+│   ├── lib.rs                    # Core daemon library (Fencer, discover_in_use_mpaths, trigger_fencing, is_map_dead)
+│   ├── config.rs                 # Multipath config parsing, validation, and regex caching
+│   ├── status.rs                 # Nagios-compatible StatusTracker (thread-safe, serialized writes)
 │   └── main.rs                   # Daemon entrypoint (CLI args, startup validation, main loop)
 ├── tests/
 │   └── integration_test.rs       # Integration tests for the daemon
@@ -217,7 +310,7 @@ These provide simple one-line access to multipathd without managing connections 
 - `lsblk = "0.6.1"` - For enumerating block devices
 - `serde = { version = "1.0", features = ["derive"] }` - For serialization traits
 - `serde_json = "1.0"` - For JSON parsing
-- `thiserror = "1.0"` - For custom error types
+- `thiserror = "2.0"` - For custom error types
 - `tokio = { version = "1.0", features = ["rt", "sync", "macros", "process"] }` - For async operations
 - `log = "0.4"` - For logging
 
@@ -436,7 +529,7 @@ The sync versions create a single-threaded Tokio runtime and block on the async 
 #[derive(Parser, Debug)]
 #[command(name = "mpath-query")]
 #[command(author = "PVE SAN Fenced")]
-#[command(version = "0.1.0")]
+#[command(version = "0.1.13")]
 struct Cli {
     /// The command to send to multipathd (default: "show maps json")
     #[arg(long, short, default_value = "show maps json")]
@@ -693,6 +786,14 @@ struct Cli {
     /// Verbose output
     #[arg(long, short)]
     verbose: bool,
+
+    /// Do not process any commands, simulating an unresponsive pvesh
+    #[arg(long)]
+    unresponsive: bool,
+
+    /// Return an error instead of data, simulating a failing pvesh
+    #[arg(long)]
+    error: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -710,8 +811,10 @@ enum CommandType {
 **Behavior**:
 
 1. Parse CLI arguments
-2. If verbose, print command, path, and output_format
-3. Determine test data directory:
+2. If `--unresponsive`, sleep indefinitely without processing commands
+3. If `--error`, exit with error code 1
+4. If verbose, print command, path, and output_format to stderr
+5. Determine test data directory:
    - First try `PVE_SAN_TEST_DATA_DIR` environment variable
    - Otherwise, go up 3 levels from binary location and append default dir
 4. Parse path to extract components (node, vmid, etc.)
@@ -758,15 +861,26 @@ test-data/
 ├── multipathd/                # Test data for mpath-mockd
 │   ├── show_maps_json/
 │   │   ├── all_active_running.json    # Sample multipath maps with all paths active
-│   │   └── failed_all_timeout.json     # Sample with failed paths (I/O timeout)
+│   │   ├── failed_all_timeout.json     # Sample with failed paths (I/O timeout)
+│   │   ├── mpatha_active_mpathb_failed.json
+│   │   ├── disabled_pg_active_path.json
+│   │   ├── failed_ghost_only.json
+│   │   ├── some_undef_some_active.json
+│   │   ├── paths_disappear_ok.json
+│   │   ├── paths_disappear_failing.json
+│   │   ├── paths_disappear_failed.json
+│   │   └── paths_disappear_back.json
 │   ├── show_config/
-│   │   └── show_config.txt             # Sample multipath config
+│   │   └── show_config_local/
+│   │       └── ok.txt
+│   ├── show_config/
+│   │   └── show_config.txt
 │   ├── show_status/
-│   │   └── show_status.txt             # Sample multipath status
+│   │   └── show_status.txt
 │   ├── show_topology/
-│   │   └── show_topology.txt           # Sample multipath topology
+│   │   └── show_topology.txt
 │   └── list_maps/
-│       └── list_maps.txt               # Sample list of maps
+│       └── list_maps.txt
 └── pvesh/                     # Test data for pvesh-mock
     ├── get_nodes/
     │   ├── pve001_qemu.json             # List of VMs for node pve001
@@ -775,7 +889,10 @@ test-data/
     │       ├── 105.json                 # VM config for VMID 105
     │       ├── ...
     │       └── 147.json                 # VM config for VMID 147
-    └── lsblk.json                       # Sample lsblk output used by tests to mock block devices mapping
+    ├── lsblk.json                       # Sample lsblk output used by tests to mock block devices mapping
+    └── pve/
+        └── local/
+            └── qemu-server/             # VM config files read in LocalFiles mode
 ```
 
 **Important Constraints**:
@@ -809,9 +926,20 @@ test-data/
 - `--socket` (default: `DEFAULT_SOCKET` from libmultipath): Multipath socket to connect to.
 - `--node-name` / `-n` (optional, default: system hostname): The name of the Proxmox node to query for VM data.
 - `--pvesh-command` (default: "pvesh"): Command to use for Proxmox VE API queries.
-- `--test-mode` / `-t` (optional, flag): Runs in test mode (only logs changes and decisions, does not trigger reboot/fencing).
+- `--test-mode` / `-t` (optional, flag): Runs in test mode (fencing decisions are logged but `trigger_fencing` is never called; daemon stays running).
 - `--sysrq-char` / `--sysrq-chars` (default: `s,b`): A comma-separated list of letters to write sequentially to `/proc/sysrq-trigger`. For example, `s,b` triggers a filesystem sync followed by an immediate reboot. For each `s` (sync) in the list, the daemon sleeps for 1 second to wait for the sync to happen.
 - `--debug` (optional, flag): Enable debug log mode to log discovered VMs, storages, and multipath devices with their state on each discovery run.
+- `--status` (optional, flag): Query and print the daemon status from the status file, exiting with the corresponding Nagios exit code.
+- `--status-file` (default: `/run/pve-san-fenced/status`): Path to write the Nagios-compatible status file.
+- `--discovery-max-retries` (default: 5): Maximum consecutive discovery failures before applying exponential backoff (0 = no backoff).
+- `--discovery-backoff-base` (default: 1): Base delay in seconds for exponential backoff.
+- `--discovery-backoff-max` (default: 30): Maximum backoff delay in seconds.
+
+**Environment Variables** (all CLI options have corresponding `PVE_SAN_*` env vars):
+- `PVE_SAN_FENCE_DRY_RUN`: If set, `trigger_fencing` is called on a fencing decision but writes to SysRq are skipped; the daemon logs, flushes status, and exits with code 0. Unlike `--test-mode`, the daemon does not continue running.
+- `PVE_SAN_FENCE_REBOOT_TIMEOUT` (default: 10): Seconds to wait after sending the reboot SysRq character before retrying.
+- `PVE_SAN_MAX_RESPONSE_SIZE` (default: 104857600): Maximum size in bytes of a multipathd JSON response.
+- `PVE_SAN_SYS_NODES_DIR` (default: `/etc/pve/nodes`): Directory containing Proxmox VE node subdirectories for node name validation.
 
 **Data Structures**:
 
@@ -849,8 +977,11 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
 
 1. **Discovery Task (VM & Storage Mapping)**:
    - Construct an async loop that executes every `DISCOVERY_INTERVAL` seconds.
+   - **Panic Recovery**: The discovery future is spawned via `tokio::task::spawn`, which catches panics in the async body and reports them via `JoinError`. The `Err(JoinError)` arm handles both panics (with message extraction) and task cancellation, incrementing the failure counter and logging a warning.
+   - **Exponential Backoff**: After `--discovery-max-retries` consecutive failures, the discovery loop applies exponential backoff: `base * 2^(failures - max_retries)`, capped at `--discovery-backoff-max`. A status issue is set during backoff.
    - **Timeout Protection**: Wrap the entire discovery execution in a `tokio::time::timeout` (30 seconds). If SAN fails, block IO can cause these operations to hang. If a timeout occurs, retain the previous `HashSet` of active LUNs.
    - Uses `libpve-san` (`get_san_storage_info`) to read the configs of all running VMs and discover their storage endpoints in `LocalFiles` mode (reads `/etc/pve/local/qemu-server/*.conf` directly).
+   - The `discover_in_use_mpaths` function accepts a `DiscoveryConfig` struct (with `socket_path` and `debug_mode` fields) instead of opaque positional parameters.
    - Resolves underlying device-mapper to multipath names by traversing `/sys/block/{dm}/slaves/` symlinks recursively until a `dm/name` file starting with `mpath` is found.
    - Finds the multipath device mapper device (`dm_name` / `WWID`) associated with the storage if it is in use by a running VM.
    - Logs any change in the active multipath devices set at `info` level (showing the previous and new sets).
@@ -865,20 +996,26 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
      - Implement exception handling: If `multipathd` fails to respond or crashes (socket error or timeout), log a critical warning and increment a separate daemon-failure counter, but **do not** immediately panic the system to avoid false positives.
    - **JSON Parsing and Validation**:
      - Parse the JSON output into the `MultipathOutput` struct.
+     - **Response size limit**: Responses exceeding `PVE_SAN_MAX_RESPONSE_SIZE` (default 100 MB) are rejected.
      - Acquire a read lock on the shared `HashSet` of active LUNs discovered by the Discovery Task.
+     - **Stale data check**: If the active LUN data is older than 2x the discovery interval, the fencer update is skipped to avoid race conditions with the discovery thread.
      - Initialize an `all_paths_dead = true` flag.
      - **Filtering**: Only evaluate maps that are present in the active LUNs `HashSet` (or explicitly provided via `--target-wwids`). Ignore failures for LUNs not actively used by any running VM.
      - For each actively used map, iterate through its `path_groups`.
+     - **Missing fields**: Missing `path_groups`, `dm_st` on path groups, and `dm_st` on individual paths are all treated as "alive" (safe tradeoff to prevent false fencing). A warning is logged and a status issue is set.
      - Within each path group, also evaluate the `paths` array. A path group is only considered truly alive if it contains at least one path with a state that is not `"failed"`, `"faulty"`, or `"ghost"`.
      - If **any** path group is alive and reports a `state` other than `"offline"` or `"failed"` (e.g., `"active"`, `"enabled"`), set `all_paths_dead = false` and break the loop for that map.
+     - **Permanently broken LUNs**: If a map that previously had working paths reports `total_paths == 0`, it is latched into `permanently_broken_luns` and forced to `is_dead = true` for all future cycles. This latch is intentional: once all paths have disappeared, VMs' I/O is inconsistent and the node must fence even if paths return.
+     - **Dead state pre-computation**: Dead/alive states for all monitored maps are computed once in the first loop and stored in a `HashMap<String, bool>`, then reused in the second loop (LUN evaluation) and the fencing decision message to avoid redundant `is_map_dead` calls.
      - Track map states (dead vs. alive) across monitoring cycles. If a monitored map's state transitions, log this change at `info` level.
      - Debug log all states (fencer consecutive failures, active set, fencer cycle status, path states) and raw configs returned by `multipathd` at `debug` level.
    - **Configuration Validation**:
      - If there are actively used maps, call `libmultipath::send_multipath_command_to_socket(&config.socket, "show config local")` to retrieve the current multipath configuration without defaults.
      - Parse the active maps to determine their `vendor` and `product` information.
-     - Match each map's `vendor` and `product` against the regex patterns found in the `devices` sections of the configuration.
+     - **Regex caching**: Vendor and product regex patterns from the `devices` sections are pre-compiled once per poll cycle via `compile_devices()`, which returns `CompiledDevice` entries with a `CompiledPattern` enum (`Absent`, `Invalid`, `Compiled`). Invalid regexes are logged and treated as non-matching. This avoids recompiling regexes on every `get_merged_config_compiled` call.
+     - Match each map's `vendor` and `product` against the pre-compiled regex patterns, then apply `defaults` / `devices` / `overrides` precedence.
      - Determine the `dev_loss_tmo` and `no_path_retry` settings for each active map, accounting for overrides.
-     - Track a WARNING status issue for any map whose `dev_loss_tmo` is not "infinity" or `no_path_retry` is not "queue".
+     - Track a WARNING status issue for any map whose `dev_loss_tmo` or `no_path_retry` does not meet the recommended thresholds (queue time >= fencing_time + 15s, dev_loss_tmo >= fencing_time + 60s, dev_loss_tmo strictly greater than queue time).
    - **Threshold Evaluation**:
      - If `all_paths_dead == true` (meaning all *actively used* LUNs have lost all paths), increment the consecutive failure counter.
      - Log a warning: `"Consecutive storage failure {count}/{MAX_FAILURES}"`.
@@ -901,10 +1038,12 @@ To avoid IO lockups due to FC failures blocking the monitoring loop, the daemon 
 3. **Status Reporting (Nagios Compatible)**:
    - Provide a mechanism to output the current daemon status in a Nagios-compatible format. This is implemented by maintaining a `StatusTracker` that aggregates active status issues and periodically writes them to a status file (e.g., `/run/pve-san-fenced/status`).
    - To prevent intermittent read failures by external Nagios checks (such as the daemon's `--status` mode), the status file is written **atomically** (written to a temporary file and renamed).
+   - **Serialized writes**: Each `write_status_file` call joins the previous write thread before spawning a new one, ensuring writes are serialized and the final file content always reflects the latest status update.
+   - **Flush on exit**: `exit_with_flush` calls `StatusTracker::flush()` to guarantee the status file is written before the process exits on startup validation failures.
    - **CRITICAL**: Set status to CRITICAL in case of a non-transient FC issue, especially when the fencing/rebooting operation failed or when the daemon is operating in dry-run mode (where rebooting is skipped but a critical failure occurred).
-   - **WARNING**: Set status to WARNING whenever the daemon runs into an issue that triggers a `warn!()` log. This includes, but is not limited to: stale active LUN data, multipath configuration discrepancies (such as `dev_loss_tmo` or `no_path_retry` violating recommendations for actively used maps), missing `dm_st` fields, SysRq configuration/state read problems, transient multipathd query failures, or discovery thread backoffs.
+   - **WARNING**: Set status to WARNING whenever the daemon runs into an issue that triggers a `warn!()` log. This includes, but is not limited to: stale active LUN data, multipath configuration discrepancies (such as `dev_loss_tmo` or `no_path_retry` violating recommendations for actively used maps), missing `dm_st` or `path_groups` fields, SysRq configuration/state read problems, transient multipathd query failures, or discovery thread backoffs.
    - **OK**: Return OK if the daemon is happy, there are no configuration issues, and no FC or VM-related problems are currently detected.
-   - *Implementation Constraint*: Stability takes precedence over functionality. If implementing this status tracking requires a major rewrite of the existing state management, it should be skipped.
+   - The `StatusTracker` is a global singleton accessed via `get_status_tracker()`, using `OnceLock<Arc<StatusTracker>>`.
 
 **Testing**:
 - Use `mpath-mockd` as a test double to simulate multipathd responses.
