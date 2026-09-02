@@ -31,6 +31,7 @@ override_dh_auto_install:
 	install -D -m 0644 man/pve-san-query.1 $(CURDIR)/debian/pve-san-fenced/usr/share/man/man1/pve-san-query.1
 
 override_dh_auto_clean:
+	rustup default stable
 	cargo clean
 	rm -rf .cargo_home .rustup_home
 
