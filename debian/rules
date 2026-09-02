@@ -16,7 +16,7 @@ override_dh_auto_build:
 
 override_dh_auto_test:
 	@echo "Checking version consistency between debian/changelog and Cargo.toml files..."
-	@CHANGELOG_VERSION=$$(dpkg-parsechangelog -S Version | cut -d- -f1) ; \
+	@CHANGELOG_VERSION=$$(dpkg-parsechangelog -S Version | sed 's/[+~_-].*//') ; \
 	CARGO_VERSIONS=$$(grep -h '^version' Cargo.toml libmultipath/Cargo.toml libpve-san/Cargo.toml tools/*/Cargo.toml | sed 's/.*"\(.*\)".*/\1/' | sort -u) ; \
 	if [ "$$CARGO_VERSIONS" != "$$CHANGELOG_VERSION" ]; then \
 		echo "ERROR: debian/changelog version ($$CHANGELOG_VERSION) does not match Cargo.toml versions ($$CARGO_VERSIONS)"; \
