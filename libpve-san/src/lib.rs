@@ -789,9 +789,6 @@ impl PveSanClient {
         }
     }
 
-    /// Run pvesh ls command to list resources at the given path
-    #[tracing::instrument(skip(self))]
-
     /// Run pvesh get command to retrieve a specific resource
     #[tracing::instrument(skip(self))]
     async fn run_pvesh_get(&self, path: &str) -> PveSanResult<String> {
