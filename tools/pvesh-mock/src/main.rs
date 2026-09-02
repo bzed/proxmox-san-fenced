@@ -25,7 +25,7 @@
 use clap::Parser;
 use std::env;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 use std::thread;
@@ -127,32 +127,16 @@ fn main() {
         path.join(DEFAULT_TEST_DATA_DIR)
     };
 
-    let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/tmp/pvesh-mock-debug.log")
-        .unwrap();
-    use std::io::Write;
-    writeln!(f, ">>> PVESH-MOCK RUNNING!").unwrap();
-    writeln!(f, ">>> PWD: {:?}", std::env::current_dir()).unwrap();
-    writeln!(
-        f,
-        ">>> PVE_SAN_TEST_DATA_DIR: {:?}",
-        env::var("PVE_SAN_TEST_DATA_DIR")
-    )
-    .unwrap();
-    writeln!(
-        f,
-        ">>> test_data_dir resolved to: {}",
-        test_data_dir.display()
-    )
-    .unwrap();
-    writeln!(
-        f,
-        ">>> command: {:?}, path_parts: {:?}",
-        cli.command, path_parts
-    )
-    .unwrap();
+    if cli.verbose {
+        eprintln!(
+            "pvesh-mock: PWD: {:?}, PVE_SAN_TEST_DATA_DIR: {:?}, test_data_dir: {}, command: {:?}, path_parts: {:?}",
+            std::env::current_dir(),
+            env::var("PVE_SAN_TEST_DATA_DIR"),
+            test_data_dir.display(),
+            cli.command,
+            path_parts
+        );
+    }
 
     let response = match (cli.command, &path_parts[..]) {
         (CommandType::Ls, ["nodes", node, "qemu"])
