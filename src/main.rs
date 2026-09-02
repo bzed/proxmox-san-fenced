@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
-use pve_san_fenced::{discover_in_use_mpaths, trigger_fencing, Fencer};
+use pve_san_fenced::{discover_in_use_mpaths, trigger_fencing, DiscoveryConfig, Fencer};
 
 /// Holds active multipath devices along with their discovery timestamp
 #[derive(Debug, Clone)]
@@ -413,8 +413,7 @@ async fn main() {
     let active_luns_clone = Arc::clone(&active_luns);
     let node_clone = cli.node_name.clone();
     let pvesh_cmd_clone = cli.pvesh_command.clone();
-    let socket_clone = cli.socket.clone();
-    let debug_mode = cli.debug;
+    let discovery_config = DiscoveryConfig::new(Some(cli.socket.clone()), cli.debug);
     let max_retries = cli.discovery_max_retries;
     let backoff_base = cli.discovery_backoff_base;
     let backoff_max = cli.discovery_backoff_max;
@@ -430,11 +429,10 @@ async fn main() {
             loop {
                 let node = node_clone.clone();
                 let pvesh_cmd = pvesh_cmd_clone.clone();
-                let socket = socket_clone.clone();
-                let debug = debug_mode;
+                let discovery = discovery_config.clone();
 
                 let join_handle = tokio::task::spawn(async move {
-                    discover_in_use_mpaths(&node, &pvesh_cmd, Some(&socket), debug).await
+                    discover_in_use_mpaths(&node, &pvesh_cmd, &discovery).await
                 });
 
                 match join_handle.await {

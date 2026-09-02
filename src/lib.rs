@@ -90,13 +90,36 @@ struct MpathPath {
     dm_st: Option<String>,
 }
 
+/// Configuration for multipath discovery queries.
+///
+/// Passed to [`discover_in_use_mpaths`] to control optional behavior such as
+/// the multipathd socket path and debug logging of discovered devices.
+#[derive(Debug, Clone)]
+pub struct DiscoveryConfig {
+    /// Multipathd socket path to query for debug logging of device states.
+    /// If `None`, debug logging of per-device states is skipped.
+    socket_path: Option<String>,
+    /// When `true`, log each discovered VM, its storage, multipath device, and
+    /// current state (active/failed/unknown) on each discovery run.
+    debug_mode: bool,
+}
+
+impl DiscoveryConfig {
+    /// Create a new `DiscoveryConfig` with the given socket path and debug mode.
+    pub fn new(socket_path: Option<String>, debug_mode: bool) -> Self {
+        Self {
+            socket_path,
+            debug_mode,
+        }
+    }
+}
+
 /// Discovers multipath devices in use by running VMs
 #[tracing::instrument]
 pub async fn discover_in_use_mpaths(
     node: &str,
     pvesh_command: &str,
-    socket_path: Option<&str>,
-    debug_mode: bool,
+    discovery: &DiscoveryConfig,
 ) -> Result<HashSet<String>, Box<dyn std::error::Error + Send + Sync>> {
     let fut = async {
         // 1. Get VM and storage info using libpve-san
@@ -105,8 +128,8 @@ pub async fn discover_in_use_mpaths(
         debug!("Discovered storage info: {:?}", storage_info);
 
         let mut maps_by_name_or_uuid = HashMap::new();
-        if debug_mode {
-            if let Some(socket) = socket_path {
+        if discovery.debug_mode {
+            if let Some(socket) = &discovery.socket_path {
                 match libmultipath::send_multipath_command_to_socket(socket, "show maps json") {
                     Ok(response_str) => {
                         if let Ok(output) = serde_json::from_str::<MultipathOutput>(&response_str) {
@@ -132,7 +155,7 @@ pub async fn discover_in_use_mpaths(
                 for disk in &vm.disks {
                     if let Some(dm_name) = &disk.device_mapper_name {
                         let mpaths: Vec<String> = dm_name.split(" / ").map(String::from).collect();
-                        if debug_mode {
+                        if discovery.debug_mode {
                             for mpath in &mpaths {
                                 let state = if let Some(map) = maps_by_name_or_uuid.get(mpath) {
                                     if is_map_dead(map) {
@@ -803,8 +826,7 @@ mod tests {
         let result = discover_in_use_mpaths(
             "pve001",
             pvesh_mock.to_str().unwrap(),
-            None,
-            /*debug_mode*/ false,
+            &DiscoveryConfig::new(None, false),
         )
         .await;
 
@@ -816,8 +838,7 @@ mod tests {
         let result_debug = discover_in_use_mpaths(
             "pve001",
             pvesh_mock.to_str().unwrap(),
-            Some("@/tmp/nonexistent-socket"),
-            /*debug_mode*/ true,
+            &DiscoveryConfig::new(Some("@/tmp/nonexistent-socket".to_string()), true),
         )
         .await;
         assert!(result_debug.is_ok());
